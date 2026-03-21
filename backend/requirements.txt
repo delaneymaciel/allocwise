@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+sqlalchemy
+pandas
+python-multipart
+PyJWT
+argon2-cffi
+python-dotenv

@@ -1,0 +1,130 @@
+[
+    {
+      "name": "Desney Silva",
+      "role": "Desenvolvedor",
+      "squad": "Protheus",
+      "color_code": "#ef4444",
+      "azure_id": "desney.silva",
+      "is_active": true
+    },
+    {
+      "name": "Rodrigo Rezende",
+      "role": "Desenvolvedor",
+      "squad": "Protheus",
+      "color_code": "#f97316",
+      "azure_id": "rodrigo.rezende",
+      "is_active": true
+    },
+    {
+      "name": "Rudson Padua",
+      "role": "Desenvolvedor",
+      "squad": "Protheus",
+      "color_code": "#eab308",
+      "azure_id": "rudson.padua",
+      "is_active": true
+    },
+    {
+      "name": "Gabriel.Oliveira",
+      "role": "Desenvolvedor",
+      "squad": "Protheus",
+      "color_code": "#22c55e",
+      "azure_id": "gabriel.oliveira",
+      "is_active": true
+    },
+    {
+      "name": "Felipe Saraiva",
+      "role": "QA",
+      "squad": "Protheus",
+      "color_code": "#14b8a6",
+      "azure_id": "felipe.saraiva",
+      "is_active": true
+    },
+    {
+      "name": "Augusto Moura",
+      "role": "Homologador",
+      "squad": "Protheus",
+      "color_code": "#3b82f6",
+      "azure_id": "augusto.moura",
+      "is_active": true
+    },
+    {
+      "name": "Stefany Silva",
+      "role": "QA",
+      "squad": "Fluig",
+      "color_code": "#8b5cf6",
+      "azure_id": "stefany.silva",
+      "is_active": true
+    },
+    {
+      "name": "Vitor Cardoso",
+      "role": "Desenvolvedor",
+      "squad": "Fluig",
+      "color_code": "#d946ef",
+      "azure_id": "vitor.cardoso",
+      "is_active": true
+    },
+    {
+      "name": "Alexander Sousa",
+      "role": "Desenvolvedor",
+      "squad": "Fluig",
+      "color_code": "#f43f5e",
+      "azure_id": "alexander.sousa",
+      "is_active": true
+    },
+    {
+      "name": "Keity Cristovam",
+      "role": "Desenvolvedor",
+      "squad": "Salesforce",
+      "color_code": "#06b6d4",
+      "azure_id": "keity.cristovam",
+      "is_active": true
+    },
+    {
+      "name": "Lucas Bernardes",
+      "role": "Homologador",
+      "squad": "Salesforce",
+      "color_code": "#6366f1",
+      "azure_id": "lucas.bernardes",
+      "is_active": true
+    },
+    {
+      "name": "Matheus Morais",
+      "role": "Desenvolvedor",
+      "squad": "Salesforce",
+      "color_code": "#10b981",
+      "azure_id": "matheus.morais",
+      "is_active": true
+    },
+    {
+      "name": "Rafael Morais",
+      "role": "Desenvolvedor",
+      "squad": "Salesforce",
+      "color_code": "#84cc16",
+      "azure_id": "rafael.morais",
+      "is_active": true
+    },
+    {
+      "name": "Robson Silva",
+      "role": "Desenvolvedor",
+      "squad": "Salesforce",
+      "color_code": "#a855f7",
+      "azure_id": "robson.silva",
+      "is_active": true
+    },
+    {
+      "name": "Simone Lemos",
+      "role": "QA",
+      "squad": "Salesforce",
+      "color_code": "#f59e0b",
+      "azure_id": "simone.lemos",
+      "is_active": true
+    },
+    {
+        "name": "Homologador",
+        "role": "Homologador",
+        "squad": "Geral",
+        "color_code": "#f59e0b",
+        "azure_id": "Homologador",
+        "is_active": true
+      }
+  ]

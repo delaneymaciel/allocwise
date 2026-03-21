@@ -1,0 +1,52 @@
+# === Segurança e Configurações Locais (CRÍTICO) ===
+# Nunca subir chaves, senhas ou peppers para o GitHub
+.env
+backend/.env
+frontend/.env
+*.pem
+*.key
+
+# === Banco de Dados Local ===
+# Evita subir os dados reais de produção ou testes locais
+*.db
+backend/azure_data.db
+
+# === Dependências e Build (Pastas pesadas) ===
+# Estas pastas são recriadas com 'npm install' ou 'pip install'
+node_modules/
+frontend/node_modules/
+backend/venv/
+dist/
+build/
+
+# === Python (Backend) ===
+# Arquivos compilados e cache de testes
+__pycache__/
+backend/__pycache__/
+.pytest_cache/
+backend/.pytest_cache/
+*.pyc
+.coverage
+.cache
+
+# === Dados e Scripts de Suporte (Raiz) ===
+# Baseado na sua imagem da raiz (image_5d37bf.png)
+*.csv
+desktop.ini
+
+# === IDEs e Sistema Operacional ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# === Extras de Segurança e Limpeza ===
+# Ignora arquivos de sistema do Windows e logs
+desktop.ini
+*.log
+
+# Ignora os arquivos CSV de exemplo na raiz
+*.csv
+
+# Ignora scripts de automação local
+*.bat
