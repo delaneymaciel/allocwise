@@ -521,6 +521,7 @@ export default function Dashboard() {
             Aguarde. Isso pode levar alguns segundos devido ao limite do servidor.
           </p>
         </div>
+        
       ) : viewMode === 'list' ? (
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
           <div className="overflow-x-auto overflow-y-auto max-h-[75vh]" onScroll={(e) => setListScrollTop(e.target.scrollTop)}>
