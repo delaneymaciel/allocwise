@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Table, Date, Boolean, UniqueConstraint, Index, JSON
+import json 
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Table, Date, Boolean, UniqueConstraint, Index, JSON, Text
 from sqlalchemy.orm import relationship, validates
 from database import Base
 
@@ -29,7 +30,19 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     role_id = Column(Integer, ForeignKey('roles.id', ondelete="SET NULL"), index=True)
     role = relationship("Role", back_populates="users", lazy="selectin")
-    preferences = Column(JSON, default={}, server_default='{}', nullable=False)
+    
+    # Preferências padrão conforme solicitado
+    default_prefs = {
+        "ganttStrictDates": True,
+        "ganttShowTeamNames": True,
+        "ganttStatusFilter": [
+            "Em Andamento", "Em Code Review", "Em Correção", "Em Desenvolvimento",
+            "Em Garantia", "Em Homologação", "Em QA", "Em RDM", 
+            "Em Refinamento", "Impedido", "Paralisado", "Refinamento com TI"
+        ]
+    }
+    
+    preferences = Column(JSON, default=default_prefs, server_default=json.dumps(default_prefs), nullable=False)
     is_active = Column(Boolean, default=True, index=True)
     must_change_password = Column(Boolean, default=True)
 
@@ -50,29 +63,36 @@ class WorkItemMetadata(Base):
 
 class AzureWorkItem(Base):
     __tablename__ = 'azure_work_items'
-    Id = Column(Integer, primary_key=True, index=True)
-    ParentId = Column(Integer, index=True)
-    AreaPath = Column(String(255), index=True)
-    Title = Column(String(255))
-    WorkItemType = Column(String(100), index=True)
-    TamanhoProjeto = Column(String(50))
-    State = Column(String(50), index=True)
-    Priority = Column(Integer)
-    TempoGasto = Column(Float)
-    Atribuido = Column(String(100), index=True)
-    IniDev = Column(DateTime, index=True)
-    FimDev = Column(DateTime)
-    IniQA = Column(DateTime)
-    FimQA = Column(DateTime)
-    IniHML = Column(DateTime)
-    FimHML = Column(DateTime)
-    EstProd = Column(DateTime)
-    custom_metadata = relationship("WorkItemMetadata", primaryjoin="AzureWorkItem.Id == foreign(WorkItemMetadata.work_item_id)", uselist=False, lazy="selectin")
+    id = Column(Integer, primary_key=True, index=True)
+    parent_id = Column(Integer, index=True)
+    area_path = Column(Text, index=True)
+    title = Column(Text)
+    work_item_type = Column(String(100), index=True)
+    tamanho_projeto = Column(String(50))
+    state = Column(String(50), index=True)
+    priority = Column(Integer)
+    tempo_gasto = Column(Float)
+    atribuido = Column(String(100), index=True)
+    ini_dev = Column(DateTime, index=True)
+    fim_dev = Column(DateTime)
+    ini_qa = Column(DateTime)
+    fim_qa = Column(DateTime)
+    ini_hml = Column(DateTime)
+    fim_hml = Column(DateTime)
+    est_prod = Column(DateTime)
+    
+    custom_metadata = relationship(
+        "WorkItemMetadata", 
+        primaryjoin="AzureWorkItem.id == foreign(WorkItemMetadata.work_item_id)", 
+        uselist=False, 
+        lazy="selectin", 
+        cascade="all, delete-orphan"
+    )
 
 class ResourceAssignment(Base):
     __tablename__ = "resource_assignments"
     id = Column(Integer, primary_key=True, index=True)
-    work_item_id = Column(Integer, ForeignKey("azure_work_items.Id"), index=True)
+    work_item_id = Column(Integer, index=True) # FK Física frouxa conforme acordado
     resource_id = Column(Integer, ForeignKey("resources.id", ondelete="CASCADE"), index=True)
     phase = Column(String(50), index=True)
     resource = relationship("Resource", lazy="selectin")
@@ -102,13 +122,11 @@ class Absence(Base):
     category = Column(String(50), default="ferias", index=True)
     description = Column(String(255), nullable=True)
     resource = relationship("Resource", back_populates="absences", lazy="selectin")
-    __table_args__ = (
-        Index('idx_absence_period', 'resource_id', 'start_date', 'end_date'),
-    )
+    __table_args__ = (Index('idx_absence_period', 'resource_id', 'start_date', 'end_date'),)
     @validates("end_date")
     def validate_dates(self, key, value):
         if self.start_date and value < self.start_date:
-            raise ValueError("end_date cannot be before start_date")
+            raise ValueError("Data fim não pode ser menor que data início")
         return value
 
 class SystemSetting(Base):

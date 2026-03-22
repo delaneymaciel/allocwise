@@ -4,12 +4,28 @@ import time
 from sqlalchemy import text
 from database import engine
 
-ALLOWED_COLUMNS = {
-    'Id','ParentId','AreaPath','Title','WorkItemType',
-    'TamanhoProjeto','State','Priority','TempoGasto','Atribuido',
-    'IniDev','FimDev','IniQA','FimQA','IniHML','FimHML','EstProd'
+# O dicionário absoluto de tradução (Azure -> Nosso Banco em snake_case)
+MAPPING = {
+    'Area Path': 'area_path', 'AreaPath': 'area_path',
+    'Parent': 'parent_id', 'ParentId': 'parent_id',
+    'ID': 'id', 'Id': 'id',
+    'Work Item Type': 'work_item_type', 'WorkItemType': 'work_item_type',
+    'Tamanho do Projeto': 'tamanho_projeto', 'TamanhoProjeto': 'tamanho_projeto',
+    'State': 'state',
+    'Priority': 'priority', 'Prioridade': 'priority',
+    'Tempo gasto': 'tempo_gasto', 'TempoGasto': 'tempo_gasto',
+    'Assigned To': 'atribuido', 'Atribuido': 'atribuido',
+    'Data Planejada Inicio Dev': 'ini_dev', 'IniDev': 'ini_dev',
+    'Data estimada Dev': 'fim_dev', 'FimDev': 'fim_dev',
+    'Data Planejada Inicio QA': 'ini_qa', 'IniQA': 'ini_qa',
+    'Data Estimada QA': 'fim_qa', 'FimQA': 'fim_qa',
+    'Data Planejada Inicio HML': 'ini_hml', 'IniHML': 'ini_hml',
+    'Data estimada HML': 'fim_hml', 'FimHML': 'fim_hml',
+    'Baseline Estimativa Subida em Produção': 'est_prod', 'EstProd': 'est_prod',
+    'Title': 'title'
 }
 
+ALLOWED_COLUMNS = set(MAPPING.values())
 MAX_ROWS = 100_000
 
 def process_csv_and_upsert(file_content):
@@ -41,72 +57,55 @@ def process_csv_and_upsert(file_content):
             return int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
 
         title_cols_sorted = sorted(title_cols, key=sort_key)
-        df['Title'] = df[title_cols_sorted].ffill(axis=1).iloc[:, -1]
+        df['title'] = df[title_cols_sorted].ffill(axis=1).iloc[:, -1]
         df.drop(columns=title_cols_sorted, inplace=True, errors='ignore')
 
-    mapping = {
-        'Area Path': 'AreaPath',
-        'Parent': 'ParentId',
-        'ID': 'Id',
-        'Work Item Type': 'WorkItemType',
-        'Tamanho do Projeto': 'TamanhoProjeto',
-        'State': 'State',
-        'Priority': 'Priority',
-        'Prioridade': 'Priority',
-        'Tempo gasto': 'TempoGasto',
-        'Assigned To': 'Atribuido',
-        'Data Planejada Inicio Dev': 'IniDev',
-        'Data estimada Dev': 'FimDev',
-        'Data Planejada Inicio QA': 'IniQA',
-        'Data Estimada QA': 'FimQA',
-        'Data Planejada Inicio HML': 'IniHML',
-        'Data estimada HML': 'FimHML',
-        'Baseline Estimativa Subida em Produção': 'EstProd'
-    }
+    # Renomear forçando snake_case
+    df.rename(columns={k: v for k, v in MAPPING.items() if k in df.columns}, inplace=True)
 
-    df.rename(columns={k: v for k, v in mapping.items() if k in df.columns}, inplace=True)
-
-    if 'AreaPath' in df.columns:
-        df['AreaPath'] = df['AreaPath'].str.replace('Tecnologia\\', '', regex=False)
+    if 'area_path' in df.columns:
+        df['area_path'] = df['area_path'].str.replace('Tecnologia\\', '', regex=False)
 
     valid_cols = [c for c in df.columns if c in ALLOWED_COLUMNS]
 
-    if 'Id' not in valid_cols:
+    if 'id' not in valid_cols:
         return 0, 0.0
 
     df = df[valid_cols]
     df = df.where(pd.notnull(df), None)
 
-    df['Id'] = pd.to_numeric(df['Id'], errors='coerce')
-    df = df.dropna(subset=['Id'])
-    df = df.drop_duplicates(subset=['Id'])
+    df['id'] = pd.to_numeric(df['id'], errors='coerce')
+    df = df.dropna(subset=['id'])
+    df = df.drop_duplicates(subset=['id'])
 
-    if 'Priority' in df.columns:
-        df['Priority'] = pd.to_numeric(df['Priority'], errors='coerce')
-        df.loc[~df['Priority'].isin([0, 1, 2, 3, 4, 5]), 'Priority'] = None
+    if 'priority' in df.columns:
+        df['priority'] = pd.to_numeric(df['priority'], errors='coerce')
+        df.loc[~df['priority'].isin([0, 1, 2, 3, 4, 5]), 'priority'] = None
 
-    if 'TempoGasto' in df.columns:
-        df['TempoGasto'] = pd.to_numeric(df['TempoGasto'], errors='coerce')
+    if 'tempo_gasto' in df.columns:
+        df['tempo_gasto'] = pd.to_numeric(df['tempo_gasto'], errors='coerce')
 
-    date_cols = ['IniDev', 'FimDev', 'IniQA', 'FimQA', 'IniHML', 'FimHML', 'EstProd']
+    date_cols = ['ini_dev', 'fim_dev', 'ini_qa', 'fim_qa', 'ini_hml', 'fim_hml', 'est_prod']
     for col in date_cols:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
+            
+    # Tratamento crítico para PostgreSQL
+    df = df.replace({pd.NaT: None, float('nan'): None})
 
     with engine.begin() as conn:
-        df.to_sql('Staging_WorkItems', conn, if_exists='replace', index=False)
-        cols_str = ", ".join(df.columns)
+        # 1. Limpeza Brutal (Instantânea, pois não há mais FK segurando a tabela)
+        conn.execute(text("TRUNCATE TABLE azure_work_items RESTART IDENTITY"))
         
-        conn.execute(text(f"""
-            DELETE FROM azure_work_items
-            WHERE Id IN (SELECT Id FROM Staging_WorkItems)
-        """))
-        
-        conn.execute(text(f"""
-            INSERT INTO azure_work_items ({cols_str})
-            SELECT {cols_str} FROM Staging_WorkItems
-        """))
-        
-        conn.execute(text("DROP TABLE IF EXISTS Staging_WorkItems"))
+        # 2. Bulk Insert em Memória (Padrão de Alta Performance)
+        # O Pandas divide os dados em lotes (chunks) e faz a injeção massiva diretamente no Postgres
+        df.to_sql(
+            'azure_work_items', 
+            conn, 
+            if_exists='append', 
+            index=False, 
+            method='multi', 
+            chunksize=5000
+        )
 
     return len(df), round(time.time() - start_time, 2)

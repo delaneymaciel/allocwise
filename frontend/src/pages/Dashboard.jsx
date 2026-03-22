@@ -6,6 +6,12 @@ import VacationsView from '../components/VacationsView';
 import AdminView from '../components/AdminView';
 import SecurityView from '../components/SecurityView';
 
+const DEFAULT_STATUS_FILTER = [
+  "Em Andamento", "Em Code Review", "Em Correção", "Em Desenvolvimento",
+  "Em Garantia", "Em Homologação", "Em QA", "Em RDM", 
+  "Em Refinamento", "Impedido", "Paralisado", "Refinamento com TI"
+];
+
 export default function Dashboard() {
   const { logout } = useAuth();
   const fileInputRef = useRef(null); 
@@ -29,15 +35,16 @@ export default function Dashboard() {
   const [editingResource, setEditingResource] = useState(null);
   const [resourceForm, setResourceForm] = useState({ name: '', role: 'Desenvolvedor', color_code: '#3b82f6', squad: 'Salesforce' });
 
-  const [userPreferences, setUserPreferences] = useState({ ganttStrictDates: false, ganttStatusFilter: [], selectedSystems: [], ganttShowTeamNames: true });
+  const [userPreferences, setUserPreferences] = useState({ ganttStrictDates: true, ganttStatusFilter: DEFAULT_STATUS_FILTER, selectedSystems: [], ganttShowTeamNames: true });
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false); 
-  const [settingsForm, setSettingsForm] = useState({ ganttStrictDates: false, ganttStatusFilter: [], selectedSystems: [], ganttShowTeamNames: true });
+  const [settingsForm, setSettingsForm] = useState({ ganttStrictDates: true, ganttStatusFilter: DEFAULT_STATUS_FILTER, selectedSystems: [], ganttShowTeamNames: true });
 
   const [editingMetadata, setEditingMetadata] = useState(null);
   const [metadataForm, setMetadataForm] = useState({ area: '', diretor: '', frente: '' });
 
+  // RESTAURAÇÃO DA VIRTUALIZAÇÃO (Corrige o ReferenceError)
   const [listScrollTop, setListScrollTop] = useState(0);
   const listRowHeight = 36; 
   const listVisibleRows = 25;
@@ -70,8 +77,8 @@ export default function Dashboard() {
       const uPref = resPrefs?.data || {};
 
       const prefs = { 
-        ganttStrictDates: uPref.ganttStrictDates || false, 
-        ganttStatusFilter: uPref.ganttStatusFilter || [],
+        ganttStrictDates: uPref.ganttStrictDates !== undefined ? uPref.ganttStrictDates : true, 
+        ganttStatusFilter: uPref.ganttStatusFilter?.length > 0 ? uPref.ganttStatusFilter : DEFAULT_STATUS_FILTER,
         selectedSystems: uPref.selectedSystems || [],
         ganttScrollPosition: uPref.ganttScrollPosition || null,
         vacationsScrollPosition: uPref.vacationsScrollPosition || null,
@@ -178,7 +185,7 @@ export default function Dashboard() {
     setSelectedItem(item);
     setTargetPhase(phase || 'Dev');
     try {
-      const res = await api.get(`/api/workitems/${item.Id}/assignments`);
+      const res = await api.get(`/api/workitems/${item.id}/assignments`);
       const mapped = { Dev: [], QA: [], HML: [] };
       if (res.data && res.data.length > 0) res.data.forEach(a => mapped[a.phase].push(a.resource_id));
       setAssignments(mapped);
@@ -197,7 +204,7 @@ export default function Dashboard() {
   const handleSaveMetadata = async (e) => {
     e.preventDefault();
     try {
-      await api.patch(`/api/workitems/${editingMetadata.Id}/metadata`, metadataForm);
+      await api.patch(`/api/workitems/${editingMetadata.id}/metadata`, metadataForm);
       setEditingMetadata(null);
       fetchData(true);
     } catch (err) {
@@ -207,7 +214,7 @@ export default function Dashboard() {
 
   const handleSaveAssignments = async () => {
     try { 
-      await api.post(`/api/workitems/${selectedItem.Id}/assignments`, assignments); 
+      await api.post(`/api/workitems/${selectedItem.id}/assignments`, assignments); 
       setSelectedItem(null); 
       setTargetPhase('Dev');
       fetchData(true); 
@@ -219,8 +226,8 @@ export default function Dashboard() {
     const index = current.indexOf(resId);
     
     if (index === -1) {
-      const startStr = selectedItem[`Ini${phase}`];
-      const endStr = selectedItem[`Fim${phase}`];
+      const startStr = selectedItem[`ini_${phase.toLowerCase()}`];
+      const endStr = selectedItem[`fim_${phase.toLowerCase()}`];
       
       if (startStr && endStr && startStr !== '-' && endStr !== '-') {
         const taskStart = new Date(startStr).getTime();
@@ -266,32 +273,32 @@ export default function Dashboard() {
   };
 
   const filterOptions = useMemo(() => {
-    const opts = { AreaPath: new Set(), WorkItemType: new Set(), TamanhoProjeto: new Set(), State: new Set(), area: new Set(), diretor: new Set(), frente: new Set(), Priority: new Set(), ParentId: new Set(), Id: new Set(), Title: new Set() };
+    const opts = { area_path: new Set(), work_item_type: new Set(), tamanho_projeto: new Set(), state: new Set(), area: new Set(), diretor: new Set(), frente: new Set(), priority: new Set(), parent_id: new Set(), id: new Set(), title: new Set() };
     (data || []).forEach(item => {
-      if (item.AreaPath) opts.AreaPath.add(item.AreaPath);
-      if (item.WorkItemType) opts.WorkItemType.add(item.WorkItemType);
-      if (item.TamanhoProjeto) opts.TamanhoProjeto.add(item.TamanhoProjeto);
-      if (item.State) opts.State.add(item.State);
+      if (item.area_path) opts.area_path.add(item.area_path);
+      if (item.work_item_type) opts.work_item_type.add(item.work_item_type);
+      if (item.tamanho_projeto) opts.tamanho_projeto.add(item.tamanho_projeto);
+      if (item.state) opts.state.add(item.state);
       if (item.custom_metadata?.area) opts.area.add(item.custom_metadata.area);
       if (item.custom_metadata?.diretor) opts.diretor.add(item.custom_metadata.diretor);
       if (item.custom_metadata?.frente) opts.frente.add(item.custom_metadata.frente);
-      if (item.Priority !== null && item.Priority !== undefined) opts.Priority.add(String(item.Priority));
-      if (item.ParentId !== null && item.ParentId !== undefined) opts.ParentId.add(String(item.ParentId));
-      if (item.Id !== null && item.Id !== undefined) opts.Id.add(String(item.Id));
-      if (item.Title) opts.Title.add(item.Title);
+      if (item.priority !== null && item.priority !== undefined) opts.priority.add(String(item.priority));
+      if (item.parent_id !== null && item.parent_id !== undefined) opts.parent_id.add(String(item.parent_id));
+      if (item.id !== null && item.id !== undefined) opts.id.add(String(item.id));
+      if (item.title) opts.title.add(item.title);
     });
     return {
-      AreaPath: Array.from(opts.AreaPath).sort(),
-      WorkItemType: Array.from(opts.WorkItemType).sort(),
-      TamanhoProjeto: Array.from(opts.TamanhoProjeto).sort(),
-      State: Array.from(opts.State).sort(),
+      area_path: Array.from(opts.area_path).sort(),
+      work_item_type: Array.from(opts.work_item_type).sort(),
+      tamanho_projeto: Array.from(opts.tamanho_projeto).sort(),
+      state: Array.from(opts.state).sort(),
       area: Array.from(opts.area).sort(),
       diretor: Array.from(opts.diretor).sort(),
       frente: Array.from(opts.frente).sort(),
-      Priority: Array.from(opts.Priority).sort((a,b) => Number(a) - Number(b)),
-      ParentId: Array.from(opts.ParentId).sort((a,b) => Number(a) - Number(b)),
-      Id: Array.from(opts.Id).sort((a,b) => Number(a) - Number(b)),
-      Title: Array.from(opts.Title).sort(),
+      priority: Array.from(opts.priority).sort((a,b) => Number(a) - Number(b)),
+      parent_id: Array.from(opts.parent_id).sort((a,b) => Number(a) - Number(b)),
+      id: Array.from(opts.id).sort((a,b) => Number(a) - Number(b)),
+      title: Array.from(opts.title).sort(),
     };
   }, [data]);
 
@@ -301,13 +308,13 @@ export default function Dashboard() {
 
   const availableSystems = useMemo(() => {
     const systems = new Set();
-    (data || []).forEach(item => { if (item.AreaPath) systems.add(item.AreaPath); });
+    (data || []).forEach(item => { if (item.area_path) systems.add(item.area_path); });
     return Array.from(systems).sort();
   }, [data]);
 
   const availableStatuses = useMemo(() => {
     const statuses = new Set();
-    (data || []).forEach(item => { if (item.State) statuses.add(item.State); });
+    (data || []).forEach(item => { if (item.state) statuses.add(item.state); });
     return Array.from(statuses).sort();
   }, [data]);
 
@@ -315,7 +322,7 @@ export default function Dashboard() {
     let result = data || [];
     
     if (userPreferences.selectedSystems?.length > 0) {
-      result = result.filter(item => userPreferences.selectedSystems.includes(item.AreaPath));
+      result = result.filter(item => userPreferences.selectedSystems.includes(item.area_path));
     }
 
     if (Object.keys(columnFilters).length > 0) {
@@ -335,8 +342,8 @@ export default function Dashboard() {
     if (!filterText) return result;
     const terms = filterText.split(',').map(t => normalizeText(t.trim())).filter(t => t !== "");
     return result.filter(item => {
-      const azureContent = normalizeText([item.AreaPath, item.Priority, item.Id, item.ParentId, item.Title, item.WorkItemType, item.State, item.Atribuido].join(' '));
-      const assignedToItem = (allAssignments || []).filter(a => String(a.work_item_id) === String(item.Id));
+      const azureContent = normalizeText([item.area_path, item.priority, item.id, item.parent_id, item.title, item.work_item_type, item.state, item.atribuido].join(' '));
+      const assignedToItem = (allAssignments || []).filter(a => String(a.work_item_id) === String(item.id));
       const resourceNames = assignedToItem.map(a => {
         const res = (resources || []).find(r => String(r.id) === String(a.resource_id));
         return res ? normalizeText(res.name) : "";
@@ -347,10 +354,10 @@ export default function Dashboard() {
           const [field, ...valueParts] = t.split(':');
           const value = valueParts.join(':').trim();
           const target = {
-            'id': item.Id, 'pai': item.ParentId, 'titulo': item.Title,
-            'tipo': item.WorkItemType, 'status': item.State, 'sistema': item.AreaPath,
-            'atribuido': item.Atribuido, 'responsavel': item.Atribuido, 'recurso': resourceNames,
-            'prioridade': item.Priority 
+            'id': item.id, 'pai': item.parent_id, 'titulo': item.title,
+            'tipo': item.work_item_type, 'status': item.state, 'sistema': item.area_path,
+            'atribuido': item.atribuido, 'responsavel': item.atribuido, 'recurso': resourceNames,
+            'prioridade': item.priority 
           }[field.trim()];
           
           if (target !== undefined) return normalizeText(target).includes(value);
@@ -360,16 +367,17 @@ export default function Dashboard() {
     });
   }, [data, filterText, allAssignments, resources, userPreferences.selectedSystems, columnFilters]);
 
+  // CORREÇÃO CRÍTICA: item.parent_id === parentId (Estava parent_id)
   const flattenedRows = useMemo(() => {
     const result = [];
-    const allIdsInFilter = new Set((filteredData || []).map(item => item.Id));
+    const allIdsInFilter = new Set((filteredData || []).map(item => item.id));
     
     const traverse = (parentId = 'ROOT', depth = 0) => {
-      const nodes = (filteredData || []).filter(item => parentId === 'ROOT' ? (!item.ParentId || !allIdsInFilter.has(item.ParentId)) : item.ParentId === parentId);
+      const nodes = (filteredData || []).filter(item => parentId === 'ROOT' ? (!item.parent_id || !allIdsInFilter.has(item.parent_id)) : item.parent_id === parentId);
       for (const node of nodes) {
         result.push({ node, depth });
-        if (expandedRows.has(node.Id)) {
-          traverse(node.Id, depth + 1);
+        if (expandedRows.has(node.id)) {
+          traverse(node.id, depth + 1);
         }
       }
     };
@@ -391,9 +399,9 @@ export default function Dashboard() {
 
   const ganttFilteredData = useMemo(() => {
     return (filteredData || []).filter(item => {
-      if (!['feature', 'bugfix', 'projeto'].includes(item.WorkItemType?.toLowerCase())) return false;
-      if (userPreferences.ganttStatusFilter?.length > 0 && !userPreferences.ganttStatusFilter.includes(item.State)) return false;
-      if (userPreferences.ganttStrictDates && (!item.IniDev || item.IniDev === '-' || !item.FimDev || item.FimDev === '-')) return false;
+      if (!['feature', 'bugfix', 'projeto'].includes(item.work_item_type?.toLowerCase())) return false;
+      if (userPreferences.ganttStatusFilter?.length > 0 && !userPreferences.ganttStatusFilter.includes(item.state)) return false;
+      if (userPreferences.ganttStrictDates && (!item.ini_dev || item.ini_dev === '-' || !item.fim_dev || item.fim_dev === '-')) return false;
       return true;
     });
   }, [filteredData, userPreferences]);
@@ -469,14 +477,14 @@ export default function Dashboard() {
             <table className="min-w-full divide-y divide-gray-100 relative">
               <thead className="bg-gray-50 text-[9px] font-black text-gray-400 tracking-tighter sticky top-0 z-30 shadow-sm border-b border-gray-200">
                 <tr>
-                  <th className="px-3 py-4 text-left border-r w-[100px]">Sistema {renderFilterSelect('AreaPath')}</th>
-                  <th className="px-2 py-4 text-center border-r w-[40px]" title="Prioridade">Pri {renderFilterSelect('Priority')}</th>
-                  <th className="px-2 py-4 text-center border-r">Pai {renderFilterSelect('ParentId')}</th>
-                  <th className="px-2 py-4 text-center border-r">ID {renderFilterSelect('Id')}</th>
-                  <th className="px-3 py-4 text-left border-r min-w-[300px]">Título da Demanda {renderFilterSelect('Title')}</th>
-                  <th className="px-3 py-4 text-left border-r">Tipo {renderFilterSelect('WorkItemType')}</th>
-                  <th className="px-2 py-4 text-center border-r">Tam {renderFilterSelect('TamanhoProjeto')}</th>
-                  <th className="px-3 py-4 text-left border-r">Status {renderFilterSelect('State')}</th>
+                  <th className="px-3 py-4 text-left border-r w-[100px]">Sistema {renderFilterSelect('area_path')}</th>
+                  <th className="px-2 py-4 text-center border-r w-[40px]" title="Prioridade">Pri {renderFilterSelect('priority')}</th>
+                  <th className="px-2 py-4 text-center border-r">Pai {renderFilterSelect('parent_id')}</th>
+                  <th className="px-2 py-4 text-center border-r">ID {renderFilterSelect('id')}</th>
+                  <th className="px-3 py-4 text-left border-r min-w-[300px]">Título da Demanda {renderFilterSelect('title')}</th>
+                  <th className="px-3 py-4 text-left border-r">Tipo {renderFilterSelect('work_item_type')}</th>
+                  <th className="px-2 py-4 text-center border-r">Tam {renderFilterSelect('tamanho_projeto')}</th>
+                  <th className="px-3 py-4 text-left border-r">Status {renderFilterSelect('state')}</th>
                   <th className="px-3 py-4 text-left border-r w-[100px]">Área {renderFilterSelect('area')}</th>
                   <th className="px-3 py-4 text-left border-r w-[100px]">Diretor(a) {renderFilterSelect('diretor')}</th>
                   <th className="px-3 py-4 text-left border-r w-[100px]">Frente {renderFilterSelect('frente')}</th>
@@ -491,35 +499,35 @@ export default function Dashboard() {
               <tbody className="divide-y divide-gray-50">
                 {listTopSpacerHeight > 0 && <tr style={{ height: listTopSpacerHeight, border: 'none' }} className="border-none"></tr>}
                 {visibleListRows.map(({ node, depth }) => {
-                  const isExpanded = expandedRows.has(node.Id);
-                  const hasChildren = (filteredData || []).some(item => item.ParentId === node.Id);
-                  const isFeature = ['feature', 'bugfix', 'projeto'].includes(node.WorkItemType?.toLowerCase());
+                  const isExpanded = expandedRows.has(node.id);
+                  const hasChildren = (filteredData || []).some(item => item.parent_id === node.id);
+                  const isFeature = ['feature', 'bugfix', 'projeto'].includes(node.work_item_type?.toLowerCase());
                   return (
-                    <tr key={node.Id} className={`border-b text-[10px] ${isFeature ? 'bg-blue-50/50 font-bold' : 'hover:bg-gray-50'} group/row`}>
-                      <td className="px-3 py-2 border-r truncate max-w-[100px]">{node.AreaPath}</td>
-                      <td className="px-2 py-2 text-center border-r font-black text-red-400">{node.Priority ?? "-"}</td>
-                      <td className="px-2 py-2 text-center border-r text-gray-400 font-mono">{node.ParentId ?? "-"}</td>
-                      <td className="px-2 py-2 text-center border-r font-mono font-bold text-blue-600">{node.Id}</td>
+                    <tr key={node.id} className={`border-b text-[10px] ${isFeature ? 'bg-blue-50/50 font-bold' : 'hover:bg-gray-50'} group/row`}>
+                      <td className="px-3 py-2 border-r truncate max-w-[100px]">{node.area_path}</td>
+                      <td className="px-2 py-2 text-center border-r font-black text-red-400">{node.priority ?? "-"}</td>
+                      <td className="px-2 py-2 text-center border-r text-gray-400 font-mono">{node.parent_id ?? "-"}</td>
+                      <td className="px-2 py-2 text-center border-r font-mono font-bold text-blue-600">{node.id}</td>
                       <td className="px-3 py-2 border-r flex items-center" style={{ paddingLeft: `${(depth * 24) + 10}px` }}>
-                        {hasChildren ? <button onClick={() => {const n = new Set(expandedRows); isExpanded ? n.delete(node.Id) : n.add(node.Id); setExpandedRows(n);}} className="w-4 h-4 mr-2 bg-blue-600 text-white rounded text-[10px] flex items-center justify-center font-black">{isExpanded ? '−' : '+'}</button> : <span className="w-6" />}
-                        {getWorkItemIcon(node.WorkItemType)}<span className="truncate">{node.Title}</span>
+                        {hasChildren ? <button onClick={() => {const n = new Set(expandedRows); isExpanded ? n.delete(node.id) : n.add(node.id); setExpandedRows(n);}} className="w-4 h-4 mr-2 bg-blue-600 text-white rounded text-[10px] flex items-center justify-center font-black">{isExpanded ? '−' : '+'}</button> : <span className="w-6" />}
+                        {getWorkItemIcon(node.work_item_type)}<span className="truncate">{node.title}</span>
                         <button onClick={() => openMetadataModal(node)} className="ml-auto opacity-0 group-hover/row:opacity-100 p-1 text-blue-600 hover:bg-blue-100 rounded transition-all">✎</button>
                       </td>
-                      <td className="px-3 py-2 border-r italic text-gray-500">{node.WorkItemType}</td>
-                      <td className="px-2 py-2 text-center border-r font-black text-orange-600">{node.TamanhoProjeto || "-"}</td>
-                      <td className="px-3 py-2 border-r uppercase font-black text-[9px] text-blue-800">{node.State}</td>
+                      <td className="px-3 py-2 border-r italic text-gray-500">{node.work_item_type}</td>
+                      <td className="px-2 py-2 text-center border-r font-black text-orange-600">{node.tamanho_projeto || "-"}</td>
+                      <td className="px-3 py-2 border-r uppercase font-black text-[9px] text-blue-800">{node.state}</td>
                       <td className="px-3 py-2 border-r truncate max-w-[100px] text-gray-600">{node.custom_metadata?.area || "-"}</td>
                       <td className="px-3 py-2 border-r truncate max-w-[100px] text-gray-600">{node.custom_metadata?.diretor || "-"}</td>
                       <td className="px-3 py-2 border-r truncate max-w-[100px] text-gray-600">{node.custom_metadata?.frente || "-"}</td>
-                      <td className="px-2 py-2 text-center border-r font-bold">{node.TempoGasto || 0}h</td>
-                      <td className="px-3 py-2 border-r truncate max-w-[100px] text-gray-500">{node.Atribuido?.split('<')[0]}</td>
-                      <td className="px-2 py-2 text-center border-r bg-yellow-50/30 font-mono">{formatDate(node.IniDev)}</td>
-                      <td className="px-2 py-2 text-center border-r bg-yellow-50/30 font-mono font-bold">{formatDate(node.FimDev)}</td>
-                      <td className="px-2 py-2 text-center border-r bg-green-50/30 font-mono">{formatDate(node.IniQA)}</td>
-                      <td className="px-2 py-2 text-center border-r bg-green-50/30 font-mono font-bold">{formatDate(node.FimQA)}</td>
-                      <td className="px-2 py-2 text-center border-r bg-orange-50/30 font-mono">{formatDate(node.IniHML)}</td>
-                      <td className="px-2 py-2 text-center border-r bg-orange-50/30 font-mono font-bold">{formatDate(node.FimHML)}</td>
-                      <td className="px-3 py-2 text-center font-black bg-blue-100/50 text-blue-900 font-mono">{formatDate(node.EstProd)}</td>
+                      <td className="px-2 py-2 text-center border-r font-bold">{node.tempo_gasto || 0}h</td>
+                      <td className="px-3 py-2 border-r truncate max-w-[100px] text-gray-500">{node.atribuido?.split('<')[0]}</td>
+                      <td className="px-2 py-2 text-center border-r bg-yellow-50/30 font-mono">{formatDate(node.ini_dev)}</td>
+                      <td className="px-2 py-2 text-center border-r bg-yellow-50/30 font-mono font-bold">{formatDate(node.fim_dev)}</td>
+                      <td className="px-2 py-2 text-center border-r bg-green-50/30 font-mono">{formatDate(node.ini_qa)}</td>
+                      <td className="px-2 py-2 text-center border-r bg-green-50/30 font-mono font-bold">{formatDate(node.fim_qa)}</td>
+                      <td className="px-2 py-2 text-center border-r bg-orange-50/30 font-mono">{formatDate(node.ini_hml)}</td>
+                      <td className="px-2 py-2 text-center border-r bg-orange-50/30 font-mono font-bold">{formatDate(node.fim_hml)}</td>
+                      <td className="px-3 py-2 text-center font-black bg-blue-100/50 text-blue-900 font-mono">{formatDate(node.est_prod)}</td>
                     </tr>
                   );
                 })}
@@ -571,7 +579,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200 my-8">
             <header className="bg-gray-800 p-8 pb-6 text-white flex justify-between items-start sticky top-0 z-10 border-b border-gray-700">
-              <div><span className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Alocação</span><h2 className="text-xl font-black mb-5">{selectedItem.Id} - {selectedItem.Title}</h2>
+              <div><span className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Alocação</span><h2 className="text-xl font-black mb-5">{selectedItem.id} - {selectedItem.title}</h2>
                 <div className="flex items-center gap-3"><span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Alocando para:</span>
                   <div className="flex bg-gray-900 rounded-lg p-1">{['Dev', 'QA', 'HML'].map(p => (
                     <button key={p} onClick={() => setTargetPhase(p)} className={`px-5 py-1.5 rounded-md text-[10px] font-black uppercase transition-all ${targetPhase === p ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}>{p}</button>))}</div>
@@ -624,7 +632,7 @@ export default function Dashboard() {
       {editingMetadata && (
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
           <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <header className="bg-gray-800 p-8 text-white flex justify-between items-center"><div><span className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Metadados</span><h2 className="text-xl font-black line-clamp-1">{editingMetadata.Id} - {editingMetadata.Title}</h2></div><button onClick={() => setEditingMetadata(null)} className="text-gray-400 hover:text-white text-2xl">✕</button></header>
+            <header className="bg-gray-800 p-8 text-white flex justify-between items-center"><div><span className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Metadados</span><h2 className="text-xl font-black line-clamp-1">{editingMetadata.id} - {editingMetadata.title}</h2></div><button onClick={() => setEditingMetadata(null)} className="text-gray-400 hover:text-white text-2xl">✕</button></header>
             <form onSubmit={handleSaveMetadata}><div className="p-8 space-y-4">
                 <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Área</label><input type="text" className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-sm font-bold outline-none focus:border-blue-500" value={metadataForm.area} onChange={e => setMetadataForm({...metadataForm, area: e.target.value})} placeholder="Ex: Financeiro, TI, RH" /></div>
                 <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Diretor(a)</label><input type="text" className="w-full p-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-sm font-bold outline-none focus:border-blue-500" value={metadataForm.diretor} onChange={e => setMetadataForm({...metadataForm, diretor: e.target.value})} placeholder="Ex: João Silva" /></div>

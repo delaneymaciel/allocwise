@@ -39,8 +39,8 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
         const aMap = {};
         if (data && data.length > 0) {
           await Promise.all(data.map(async (item) => {
-            const resA = await api.get(`/api/workitems/${item.Id}/assignments`);
-            aMap[item.Id] = resA.data; 
+            const resA = await api.get(`/api/workitems/${item.id}/assignments`);
+            aMap[item.id] = resA.data; 
           }));
         }
         setAssignmentsMap(aMap);
@@ -51,7 +51,7 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
 
   const { minDate, daysCount } = useMemo(() => {
     const allDates = data.flatMap(item => [
-      item.IniDev, item.FimDev, item.IniQA, item.FimQA, item.IniHML, item.FimHML, item.EstProd
+      item.ini_dev, item.fim_dev, item.ini_qa, item.fim_qa, item.ini_hml, item.fim_hml, item.est_prod
     ].filter(d => d && d !== '-').map(d => new Date(d)));
     if (allDates.length === 0) return { minDate: new Date(), daysCount: 0 };
     const min = startOfDay(addDays(new Date(Math.min(...allDates)), -2));
@@ -64,15 +64,15 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
     const resourceTimelines = {};
     data.forEach(node => {
       ['Dev', 'QA', 'HML'].forEach(phase => {
-        const startStr = node[`Ini${phase}`];
-        const endStr = node[`Fim${phase}`];
+        const startStr = node[`ini_${phase.toLowerCase()}`];
+        const endStr = node[`fim_${phase.toLowerCase()}`];
         if (!startStr || startStr === '-' || !endStr || endStr === '-') return;
         const start = new Date(startStr).getTime();
         const end = new Date(endStr).getTime();
-        const assigns = assignmentsMap[node.Id]?.filter(a => a.phase === phase) || [];
+        const assigns = assignmentsMap[node.id]?.filter(a => a.phase === phase) || [];
         assigns.forEach(a => {
           if (!resourceTimelines[a.resource_id]) resourceTimelines[a.resource_id] = [];
-          resourceTimelines[a.resource_id].push({ featureId: node.Id, phase, start, end });
+          resourceTimelines[a.resource_id].push({ featureId: node.id, phase, start, end });
         });
       });
     });
@@ -94,22 +94,22 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
 
   const dependencyLines = useMemo(() => {
     const lines = [];
-    const nodeIndexMap = new Map(data.map((n, i) => [n.Id, i]));
+    const nodeIndexMap = new Map(data.map((n, i) => [n.id, i]));
     data.forEach((targetNode, targetIdx) => {
       const deps = targetNode.Dependencies || [];
       deps.forEach(depId => {
         const sourceIdx = nodeIndexMap.get(depId);
         if (sourceIdx !== undefined) {
           const sourceNode = data[sourceIdx];
-          const sourceEndStr = sourceNode.FimHML !== '-' ? sourceNode.FimHML : (sourceNode.FimQA !== '-' ? sourceNode.FimQA : sourceNode.FimDev);
-          const targetStartStr = targetNode.IniDev !== '-' ? targetNode.IniDev : (targetNode.IniQA !== '-' ? targetNode.IniQA : targetNode.IniHML);
+          const sourceEndStr = sourceNode.fim_hml !== '-' ? sourceNode.fim_hml : (sourceNode.fim_qa !== '-' ? sourceNode.fim_qa : sourceNode.fim_dev);
+          const targetStartStr = targetNode.ini_dev !== '-' ? targetNode.ini_dev : (targetNode.ini_qa !== '-' ? targetNode.ini_qa : targetNode.ini_hml);
           if (sourceEndStr && targetStartStr && sourceEndStr !== '-' && targetStartStr !== '-') {
             const sourceX = (differenceInDays(new Date(sourceEndStr), minDate) + 1) * dayWidth;
             const sourceY = sourceIdx * rowHeight + (rowHeight / 2);
             const targetX = differenceInDays(new Date(targetStartStr), minDate) * dayWidth;
             const targetY = targetIdx * rowHeight + (rowHeight / 2);
             const path = `M ${sourceX} ${sourceY} C ${sourceX + 20} ${sourceY}, ${targetX - 20} ${targetY}, ${targetX} ${targetY}`;
-            lines.push(<path key={`${sourceNode.Id}-${targetNode.Id}`} d={path} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 2" markerEnd="url(#arrowhead)" opacity="0.6" />);
+            lines.push(<path key={`${sourceNode.id}-${targetNode.id}`} d={path} fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="4 2" markerEnd="url(#arrowhead)" opacity="0.6" />);
           }
         }
       });
@@ -230,15 +230,15 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
           <tbody className="divide-y divide-gray-50">
             {topSpacerHeight > 0 && <tr style={{ height: topSpacerHeight }}></tr>}
             {visibleData.map((node) => {
-              const { value: pValue, color: pColor } = getPriorityData(node.Priority);
+              const { value: pValue, color: pColor } = getPriorityData(node.priority);
               return (
-                <tr key={node.Id} className="hover:bg-blue-50/50 group transition-all h-12 relative">
+                <tr key={node.id} className="hover:bg-blue-50/50 group transition-all h-12 relative">
                   <td 
                     onClick={() => onOpenAllocationModal && onOpenAllocationModal(node)}
                     className="w-[350px] min-w-[350px] max-w-[350px] border-r border-gray-100 p-3 bg-white sticky left-0 z-20 flex items-center gap-2 group-hover:bg-blue-50/50 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.1)] cursor-pointer"
                     title="Clique para gerir a alocação"
                   >
-                    <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded flex-shrink-0">{node.Id}</span>
+                    <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded flex-shrink-0">{node.id}</span>
                     <div className="relative flex items-center justify-center w-6 h-6 flex-shrink-0" title={`Prioridade: ${pValue}`}>
                       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 24 24">
                         <path d="M 12 2 A 10 10 0 1 1 2 12" fill="none" stroke={pColor} strokeWidth="2.5" strokeLinecap="round" />
@@ -249,10 +249,10 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
                       <span className="text-[10px] font-black" style={{ color: pColor }}>{pValue}</span>
                     </div>
                     <div className="flex-1 flex items-center gap-2 min-w-0">
-                      {getWorkItemIcon && getWorkItemIcon(node.WorkItemType)}
-                      <span className="text-[11px] font-bold truncate text-gray-800">{node.Title}</span>
+                      {getWorkItemIcon && getWorkItemIcon(node.work_item_type)}
+                      <span className="text-[11px] font-bold truncate text-gray-800">{node.title}</span>
                     </div>
-                    <span className="text-[8px] font-black uppercase bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200 flex-shrink-0 ml-auto">{node.State}</span>
+                    <span className="text-[8px] font-black uppercase bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200 flex-shrink-0 ml-auto">{node.state}</span>
                   </td>
                   <td colSpan={timelineDays.length} className="p-0 relative align-top">
                     <div className="flex h-12 w-full relative">
@@ -267,18 +267,17 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
                         return <div key={i} className={`h-full border-r border-gray-50 flex-shrink-0 ${bgColor}`} style={{ width: dayWidth }} title={day.holiday?.description} />;
                       })}
                       {['Dev', 'QA', 'HML'].map(phase => {
-                        const coords = getBarCoords(node[`Ini${phase}`], node[`Fim${phase}`]);
+                        const coords = getBarCoords(node[`ini_${phase.toLowerCase()}`], node[`fim_${phase.toLowerCase()}`]);
                         if (!coords) return null;
-                        const assignedList = assignmentsMap[node.Id]?.filter(a => a.phase === phase) || [];
+                        const assignedList = assignmentsMap[node.id]?.filter(a => a.phase === phase) || [];
                         const resourceObjs = assignedList.map(a => resourcesMap[a.resource_id]).filter(Boolean);
                         const barColor = resourceObjs.length > 0 ? resourceObjs[0].color_code : (phase === 'Dev' ? '#facc15' : phase === 'QA' ? '#16a34a' : '#ea580c');
                         const namesStr = resourceObjs.map(r => r.name.split('.')[0]).join(', ');
                         
-                        // Nova regra de visualização (Mascaramento do nome se configurado)
                         const label = (resourceObjs.length > 0 && showTeamNames) ? `${phase}: ${namesStr}` : phase;
                         
                         const hasResources = resourceObjs.length > 0;
-                        const isOverbooked = overbookedSet.has(`${node.Id}-${phase}`);
+                        const isOverbooked = overbookedSet.has(`${node.id}-${phase}`);
                         const barStyle = {
                           left: coords.left,
                           width: coords.width,
@@ -303,8 +302,8 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
                           </div>
                         );
                       })}
-                      {node.EstProd && node.EstProd !== '-' && (
-                        <div className="absolute w-4 h-9 bg-blue-900 rounded-full z-20 shadow-xl border-2 border-white flex items-center justify-center" style={{ left: (differenceInDays(new Date(node.EstProd), minDate) * dayWidth) + (dayWidth/2) - 8, top: '6px' }}>
+                      {node.est_prod && node.est_prod !== '-' && (
+                        <div className="absolute w-4 h-9 bg-blue-900 rounded-full z-20 shadow-xl border-2 border-white flex items-center justify-center" style={{ left: (differenceInDays(new Date(node.est_prod), minDate) * dayWidth) + (dayWidth/2) - 8, top: '6px' }}>
                           <span className="text-white text-xs">🚀</span>
                         </div>
                       )}

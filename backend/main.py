@@ -8,8 +8,9 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 import models, auth, ingestion, database
+
 
 def seed_holidays(db: Session):
     if db.query(models.Holiday).first():
@@ -266,22 +267,23 @@ async def upload_csv(
 ):
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Arquivo deve ser CSV")
+    
     content = await file.read()
-    if len(content) > 10_000_000:
-        raise HTTPException(status_code=400, detail="Arquivo muito grande")
+    
     try:
-        db.query(models.AzureWorkItem).delete()
-        db.commit() 
+        # A API apenas recebe o arquivo e delega o trabalho pesado.
         rows, duration = ingestion.process_csv_and_upsert(content)
         return {"message": "Sucesso", "rows": rows, "time": duration}
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Falha ao processar a importação do CSV.")
+        print(f"--- ERRO CRÍTICO NA INGESTÃO ---")
+        print(str(e))
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 @app.get("/api/workitems")
 def get_workitems(db: Session = Depends(database.get_db), user=Depends(auth.get_current_user)):
     return db.query(models.AzureWorkItem).order_by(
-        models.AzureWorkItem.ParentId,
-        models.AzureWorkItem.Id
+        models.AzureWorkItem.parent_id, # <- CORRIGIDO PARA snake_case
+        models.AzureWorkItem.id         # <- CORRIGIDO PARA snake_case
     ).all()
 
 @app.patch("/api/workitems/{item_id}/metadata")
@@ -353,9 +355,9 @@ def delete_absence(id: int, db: Session = Depends(database.get_db), user=Depends
 @app.get("/api/admin/tables")
 def get_tables(db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:ler"))):
     try:
-        query = text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-        result = db.execute(query).fetchall()
-        return [row[0] for row in result]
+        # Pega a engine atual do banco (seja ela SQLite ou Postgres) e lista as tabelas
+        inspector = inspect(db.get_bind())
+        return inspector.get_table_names()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
