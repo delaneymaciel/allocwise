@@ -94,13 +94,10 @@ app = FastAPI(lifespan=lifespan)
 
 
 raw_origins = os.getenv("FRONTEND_URL", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000")
-origens_permitidas = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
-origens_permitidas = [
-    "http://localhost:5173",          
-    "http://localhost:3000",          
-    "https://app.allocwise.com",      
-]
+env_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+origens_permitidas = list(set(["http://localhost:5173", "http://localhost:3000"] + env_origins))
 
 app.add_middleware(
     CORSMiddleware,
@@ -459,4 +456,3 @@ def update_my_preferences(
     db.commit()
     db.refresh(user)
     return user.preferences
-
