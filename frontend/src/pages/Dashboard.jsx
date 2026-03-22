@@ -6,6 +6,9 @@ import VacationsView from '../components/VacationsView';
 import AdminView from '../components/AdminView';
 import SecurityView from '../components/SecurityView';
 
+
+
+
 const DEFAULT_STATUS_FILTER = [
   "Em Andamento", "Em Code Review", "Em Correção", "Em Desenvolvimento",
   "Em Garantia", "Em Homologação", "Em QA", "Em RDM", 
@@ -28,6 +31,7 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState('list'); 
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
   const [loading, setLoading] = useState(true);
  
   const [selectedItem, setSelectedItem] = useState(null);
@@ -183,13 +187,36 @@ export default function Dashboard() {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+  
+    // 1. Inicia o loading visual IMEDIATAMENTE
     setUploading(true);
     setIsSettingsMenuOpen(false); 
+    setUploadMessage("Lendo arquivo selecionado..."); 
+  
+    // HACK ARQUITETURAL: Libera a Main Thread por 50ms para o navegador renderizar o Spinner
+    await new Promise(resolve => setTimeout(resolve, 50));
+  
     const formData = new FormData();
     formData.append('file', file);
-    try { await api.post('/api/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }); fetchData(); } 
-    catch (err) { alert("Erro no upload do CSV"); } 
-    finally { setUploading(false); e.target.value = ""; }
+  
+    try {
+      // 2. Alinha a expectativa sobre a latência da nuvem
+      setUploadMessage("Processando no servidor. Isso pode levar alguns segundos...");
+      
+      await api.post('/api/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      
+      // 3. Feedback de sucesso antes do recarregamento
+      setUploadMessage("Importação concluída! Atualizando Gantt...");
+      fetchData(); 
+    } catch (err) {
+      setUploadMessage("Erro no upload do CSV. Verifique o formato do arquivo.");
+      // Pausa para o utilizador conseguir ler a mensagem de erro antes do loading fechar
+      await new Promise(resolve => setTimeout(resolve, 3000)); 
+    } finally {
+      setUploading(false);
+      setUploadMessage(""); 
+      e.target.value = ""; 
+    }
   };
 
   const openEditModal = async (item, phase = null) => {
@@ -486,6 +513,14 @@ export default function Dashboard() {
 
       {loading ? (
         <div className="text-center py-40"><div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div></div>
+      ) : uploading ? (
+        <div className="text-center py-40 animate-in fade-in">
+          <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-6 shadow-sm"></div>
+          <p className="text-xl font-black text-blue-900 tracking-tight">{uploadMessage || "Processando arquivo..."}</p>
+          <p className="mt-3 text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+            Aguarde. Isso pode levar alguns segundos devido ao limite do servidor.
+          </p>
+        </div>
       ) : viewMode === 'list' ? (
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
           <div className="overflow-x-auto overflow-y-auto max-h-[75vh]" onScroll={(e) => setListScrollTop(e.target.scrollTop)}>
