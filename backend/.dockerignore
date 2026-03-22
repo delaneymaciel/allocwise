@@ -1,0 +1,25 @@
+# Segurança
+.env
+*.pem
+*.key
+
+# Bancos de dados locais (O Docker deve gerar um novo ou conectar a um externo)
+*.db
+azure_data.db
+
+# Ambientes virtuais e cache Python
+venv/
+.venv/
+env/
+__pycache__/
+.pytest_cache/
+*.pyc
+.coverage
+.cache
+
+# Ficheiros de dados locais e OS
+*.csv
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

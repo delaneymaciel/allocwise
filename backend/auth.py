@@ -2,9 +2,10 @@ import os
 import jwt
 from datetime import datetime, timedelta, timezone
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from typing import TypedDict, List
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,6 +15,14 @@ security = HTTPBearer()
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = int(os.getenv("TOKEN_EXPIRE_HOURS", "8"))
+
+
+# Tipagem restrita aprovada: Melhora o Type Checker sem quebrar compatibilidade
+class TokenPayload(TypedDict):
+    sub: str
+    permissions: List[str]
+    exp: int
+    iat: int
 
 
 def get_env_or_fail(var_name: str, min_length: int = 32) -> str:
@@ -34,7 +43,8 @@ def get_password_hash(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return ph.verify(hashed_password, plain_password + PEPPER)
-    except VerifyMismatchError:
+    # Tratamento expandido aprovado: Protege contra hashes corrompidos no banco
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
 
 
@@ -50,7 +60,7 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(auth: HTTPAuthorizationCredentials = Security(security)) -> dict:
+def get_current_user(auth: HTTPAuthorizationCredentials = Security(security)) -> TokenPayload:
     try:
         payload = jwt.decode(auth.credentials, SECRET_KEY, algorithms=[ALGORITHM])
 
@@ -64,8 +74,8 @@ def get_current_user(auth: HTTPAuthorizationCredentials = Security(security)) ->
 
 
 def require_permission(permission_name: str):
-    def decorator(token_data: dict = Depends(get_current_user)):
-        permissions = token_data.get("permissions")
+    def decorator(token_data: TokenPayload = Depends(get_current_user)):
+        permissions = token_data.get("permissions", [])
 
         if not isinstance(permissions, list):
             raise HTTPException(status_code=401, detail="Token inválido")

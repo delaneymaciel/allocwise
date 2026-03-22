@@ -1,5 +1,6 @@
-import json 
+import json
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Table, Date, Boolean, UniqueConstraint, Index, JSON, Text
+from sqlalchemy.sql import func # ADICIONADO: Para gerir timestamps diretamente no motor do Postgres
 from sqlalchemy.orm import relationship, validates
 from database import Base
 
@@ -28,10 +29,11 @@ class User(Base):
     username = Column(String(100), unique=True, nullable=False, index=True)
     email = Column(String(150), nullable=True, index=True)
     password_hash = Column(String(255), nullable=False)
-    role_id = Column(Integer, ForeignKey('roles.id', ondelete="SET NULL"), index=True)
+    
+    # MELHORIA: nullable=True explícito
+    role_id = Column(Integer, ForeignKey('roles.id', ondelete="SET NULL"), nullable=True, index=True)
     role = relationship("Role", back_populates="users", lazy="selectin")
     
-    # Preferências padrão conforme solicitado
     default_prefs = {
         "ganttStrictDates": True,
         "ganttShowTeamNames": True,
@@ -42,7 +44,8 @@ class User(Base):
         ]
     }
     
-    preferences = Column(JSON, default=default_prefs, server_default=json.dumps(default_prefs), nullable=False)
+    # MELHORIA: lambda dict() para prevenir mutabilidade de memória em Python
+    preferences = Column(JSON, default=lambda: dict(User.default_prefs), server_default=json.dumps(default_prefs), nullable=False)
     is_active = Column(Boolean, default=True, index=True)
     must_change_password = Column(Boolean, default=True)
 
@@ -60,6 +63,8 @@ class WorkItemMetadata(Base):
     area = Column(String(100))
     diretor = Column(String(100))
     frente = Column(String(100))
+    # GOVERNANÇA: Rastreio de quando a edição manual ocorreu
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 class AzureWorkItem(Base):
     __tablename__ = 'azure_work_items'
@@ -81,6 +86,9 @@ class AzureWorkItem(Base):
     fim_hml = Column(DateTime)
     est_prod = Column(DateTime)
     
+    # GOVERNANÇA: Saber exatamente quando ocorreu a última ingestão do CSV
+    synced_at = Column(DateTime, server_default=func.now())
+    
     custom_metadata = relationship(
         "WorkItemMetadata", 
         primaryjoin="AzureWorkItem.id == foreign(WorkItemMetadata.work_item_id)", 
@@ -92,7 +100,7 @@ class AzureWorkItem(Base):
 class ResourceAssignment(Base):
     __tablename__ = "resource_assignments"
     id = Column(Integer, primary_key=True, index=True)
-    work_item_id = Column(Integer, index=True) # FK Física frouxa conforme acordado
+    work_item_id = Column(Integer, index=True)
     resource_id = Column(Integer, ForeignKey("resources.id", ondelete="CASCADE"), index=True)
     phase = Column(String(50), index=True)
     resource = relationship("Resource", lazy="selectin")
@@ -123,6 +131,7 @@ class Absence(Base):
     description = Column(String(255), nullable=True)
     resource = relationship("Resource", back_populates="absences", lazy="selectin")
     __table_args__ = (Index('idx_absence_period', 'resource_id', 'start_date', 'end_date'),)
+    
     @validates("end_date")
     def validate_dates(self, key, value):
         if self.start_date and value < self.start_date:

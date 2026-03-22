@@ -20,7 +20,10 @@ export default function Dashboard() {
   const [holidays, setHolidays] = useState([]);
   const [absences, setAbsences] = useState([]);
   const [allAssignments, setAllAssignments] = useState([]); 
+  
   const [filterText, setFilterText] = useState("");
+  const [debouncedFilter, setDebouncedFilter] = useState("");
+
   const [columnFilters, setColumnFilters] = useState({});
   const [viewMode, setViewMode] = useState('list'); 
   const [expandedRows, setExpandedRows] = useState(new Set());
@@ -44,11 +47,15 @@ export default function Dashboard() {
   const [editingMetadata, setEditingMetadata] = useState(null);
   const [metadataForm, setMetadataForm] = useState({ area: '', diretor: '', frente: '' });
 
-  // RESTAURAÇÃO DA VIRTUALIZAÇÃO (Corrige o ReferenceError)
   const [listScrollTop, setListScrollTop] = useState(0);
   const listRowHeight = 36; 
   const listVisibleRows = 25;
   const listOverscan = 10;
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedFilter(filterText), 50);
+    return () => clearTimeout(t);
+  }, [filterText]);
 
   const fetchData = async (silent = false) => {
     try {
@@ -147,8 +154,12 @@ export default function Dashboard() {
   };
 
   const handleToggleStatus = async (id) => {
-    try { await api.patch(`/api/resources/${id}/status`); fetchData(); } 
-    catch (err) { alert("Erro ao alterar status."); }
+    try { 
+      await api.patch(`/api/resources/${id}/status`); 
+      setResources(prev => prev.map(r => 
+        r.id === id ? { ...r, is_active: !r.is_active } : r
+      ));
+    } catch (err) { alert("Erro ao alterar status."); }
   };
 
   const getWorkItemIcon = (type) => {
@@ -205,8 +216,12 @@ export default function Dashboard() {
     e.preventDefault();
     try {
       await api.patch(`/api/workitems/${editingMetadata.id}/metadata`, metadataForm);
+      setData(prev => prev.map(item => 
+        item.id === editingMetadata.id 
+          ? { ...item, custom_metadata: metadataForm } 
+          : item
+      ));
       setEditingMetadata(null);
-      fetchData(true);
     } catch (err) {
       alert("Erro ao salvar dados manuais.");
     }
@@ -217,7 +232,8 @@ export default function Dashboard() {
       await api.post(`/api/workitems/${selectedItem.id}/assignments`, assignments); 
       setSelectedItem(null); 
       setTargetPhase('Dev');
-      fetchData(true); 
+      const res = await api.get('/api/assignments/all');
+      setAllAssignments(res.data);
     } catch (e) { alert("Erro ao salvar alocação"); }
   };
 
@@ -339,8 +355,8 @@ export default function Dashboard() {
       });
     }
 
-    if (!filterText) return result;
-    const terms = filterText.split(',').map(t => normalizeText(t.trim())).filter(t => t !== "");
+    if (!debouncedFilter) return result;
+    const terms = debouncedFilter.split(',').map(t => normalizeText(t.trim())).filter(t => t !== "");
     return result.filter(item => {
       const azureContent = normalizeText([item.area_path, item.priority, item.id, item.parent_id, item.title, item.work_item_type, item.state, item.atribuido].join(' '));
       const assignedToItem = (allAssignments || []).filter(a => String(a.work_item_id) === String(item.id));
@@ -365,9 +381,8 @@ export default function Dashboard() {
         return azureContent.includes(t) || resourceNames.includes(t);
       });
     });
-  }, [data, filterText, allAssignments, resources, userPreferences.selectedSystems, columnFilters]);
+  }, [data, debouncedFilter, allAssignments, resources, userPreferences.selectedSystems, columnFilters]);
 
-  // CORREÇÃO CRÍTICA: item.parent_id === parentId (Estava parent_id)
   const flattenedRows = useMemo(() => {
     const result = [];
     const allIdsInFilter = new Set((filteredData || []).map(item => item.id));
@@ -534,6 +549,11 @@ export default function Dashboard() {
                 {listBottomSpacerHeight > 0 && <tr style={{ height: listBottomSpacerHeight, border: 'none' }} className="border-none"></tr>}
               </tbody>
             </table>
+          </div>
+          
+          {/* NOVO: Footer discreto com a contagem de registos na Lista */}
+          <div className="bg-gray-50/50 border-t border-gray-100 px-4 py-2 flex justify-end items-center">
+            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Total: {flattenedRows.length} registo(s)</span>
           </div>
         </div>
       ) : viewMode === 'team' ? (

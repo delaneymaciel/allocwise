@@ -4,38 +4,45 @@ import { jwtDecode } from 'jwt-decode';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  // Alteração estratégica: sessionStorage garante que o token não persista no disco (Segurança)
+  const [token, setToken] = useState(sessionStorage.getItem('token'));
   
   const [user, setUser] = useState(() => {
-    const savedToken = localStorage.getItem('token');
+    const savedToken = sessionStorage.getItem('token');
     if (savedToken && savedToken.split('.').length === 3) {
       try {
-        return jwtDecode(savedToken);
+        const decoded = jwtDecode(savedToken);
+        // Validação de expiração logo na inicialização
+        if (decoded.exp * 1000 < Date.now()) {
+          sessionStorage.removeItem('token');
+          return null;
+        }
+        return decoded;
       } catch (e) {
-        localStorage.removeItem('token');
+        sessionStorage.removeItem('token');
         return null;
       }
     }
     return null;
   });
 
-  // O login agora é uma função síncrona que recebe o token validado pelo Login.jsx
   const login = (newToken, userData) => {
-    localStorage.setItem('token', newToken);
+    sessionStorage.setItem('token', newToken);
     setToken(newToken);
     setUser(userData || jwtDecode(newToken));
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
     setToken(null);
     setUser(null);
   };
 
   const hasPermission = (perm) => user?.permissions?.includes(perm);
 
+  // CRÍTICO: Agora o 'token' é exposto para que o ProtectedRoute e o api.js possam usá-lo
   return (
-    <AuthContext.Provider value={{ user, login, logout, hasPermission }}>
+    <AuthContext.Provider value={{ user, token, login, logout, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

@@ -11,7 +11,6 @@ export default function Login() {
   const navigate = useNavigate();
 
   const [requirePasswordChange, setRequirePasswordChange] = useState(false);
-  const [userIdToChange, setUserIdToChange] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -27,7 +26,7 @@ export default function Login() {
     } catch (err) {
       if (err.response?.status === 403 && err.response?.data?.requirePasswordChange) {
         setRequirePasswordChange(true);
-        setUserIdToChange(err.response.data.userId);
+        // Blindagem: Limpa a senha provisória, mas mantém o username para o próximo passo
         setCreds({ ...creds, password: '' }); 
       } else {
         setError(err.response?.data?.detail || "Falha no login. Verifique as credenciais.");
@@ -52,14 +51,15 @@ export default function Login() {
 
     setLoading(true);
     try {
+      // SINCRONIZAÇÃO: Usamos o username do estado 'creds' para localizar o usuário no banco
       await api.post('/api/users/change-initial-password', { 
-        userId: userIdToChange, 
+        username: creds.username, 
         newPassword 
       });
       setRequirePasswordChange(false);
       setNewPassword('');
       setConfirmPassword('');
-      alert('Senha atualizada com sucesso! Por favor, faça o login.');
+      alert('Senha atualizada com sucesso! Por favor, entre com sua nova senha.');
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao atualizar senha.');
     } finally {
@@ -95,7 +95,7 @@ export default function Login() {
           <form onSubmit={handleChangePassword} className="space-y-5 animate-in slide-in-from-right-4 fade-in">
             <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100 mb-6">
               <span className="text-[10px] font-black text-yellow-800 uppercase tracking-widest block mb-1">Ação Requerida</span>
-              <p className="text-xs text-yellow-700 font-medium">Por motivos de segurança, defina uma nova senha forte antes de acessar.</p>
+              <p className="text-xs text-yellow-700 font-medium">Por segurança, defina uma senha forte antes de acessar o Dashboard.</p>
             </div>
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Nova Senha Forte</label>

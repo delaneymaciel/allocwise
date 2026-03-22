@@ -1,16 +1,31 @@
 import json
 import os
 import re
+import logging
 from contextlib import asynccontextmanager
 from datetime import date
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect
 import models, auth, ingestion, database
 
+# 1. Configuração de Observabilidade (Pronto para Nuvem)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+app = FastAPI()
+
+# 2. Governança de Payload: Impedir corrupção de JSON nas preferências
+class UserPreferences(BaseModel):
+    ganttStrictDates: bool = True
+    ganttShowTeamNames: bool = True
+    ganttStatusFilter: List[str] = []
+    selectedSystems: List[str] = []
+    ganttScrollPosition: Optional[Dict[str, Any]] = None
+    vacationsScrollPosition: Optional[Dict[str, Any]] = None
 
 def seed_holidays(db: Session):
     if db.query(models.Holiday).first():
@@ -38,7 +53,8 @@ def seed_resources(db: Session):
             data = json.load(f)
         db.bulk_insert_mappings(models.Resource, data)
         db.commit()
-    except Exception:
+    except Exception as e:
+        logger.error(f"Erro no seed de resources: {str(e)}")
         db.rollback()
 
 @asynccontextmanager
@@ -49,11 +65,16 @@ async def lifespan(app: FastAPI):
             admin_role = models.Role(name="Administrador")
             gerente_role = models.Role(name="Gerente")
             visualizador_role = models.Role(name="Visualizador")
+            
+            # Novas Permissões Estruturais
             p1 = models.Permission(name="csv:importar")
             p2 = models.Permission(name="usuarios:ler")
-            admin_role.permissions = [p1, p2]
+            p3 = models.Permission(name="usuarios:editar")
+            p4 = models.Permission(name="recursos:editar")
             
-            # BLINDAGEM 1: Senha em variável de ambiente e Zero Trust ativado para o Admin
+            admin_role.permissions = [p1, p2, p3, p4]
+            gerente_role.permissions = [p4]
+            
             initial_pwd = os.getenv("ADMIN_INITIAL_PASSWORD", "AllocWise@Provisoria1")
             admin_user = models.User(
                 name="Administrador",
@@ -61,7 +82,7 @@ async def lifespan(app: FastAPI):
                 email="admin@allocwise.com",
                 password_hash=auth.get_password_hash(initial_pwd),
                 role=admin_role,
-                must_change_password=True # O Admin também é forçado a criar senha forte no 1º login
+                must_change_password=True
             )
             db.add_all([admin_role, gerente_role, visualizador_role, admin_user])
             db.commit()
@@ -71,24 +92,31 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# BLINDAGEM 2: CORS Restrito
-# Lê do .env as URLs permitidas, se não existir, limita apenas ao localhost do Vite
-origins = os.getenv("FRONTEND_URL", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+
+raw_origins = os.getenv("FRONTEND_URL", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000")
+origens_permitidas = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+origens_permitidas = [
+    "http://localhost:5173",          
+    "http://localhost:3000",          
+    "https://app.allocwise.com",      
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_credentials=True, # Importante habilitar para transações seguras
+    allow_origins=origens_permitidas,
+    allow_credentials=True,             
+    allow_methods=["*"],                
+    allow_headers=["*"],                
 )
 
+# BLINDAGEM: Rotas de Recursos agora são Autenticadas e com RBAC
 @app.get("/api/resources")
-def get_resources(db: Session = Depends(database.get_db)):
+def get_resources(db: Session = Depends(database.get_db), current=Depends(auth.get_current_user)):
     return db.query(models.Resource).all()
 
 @app.post("/api/resources")
-def create_resource(res_data: dict, db: Session = Depends(database.get_db)):
+def create_resource(res_data: dict, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("recursos:editar"))):
     if 'name' not in res_data:
         raise HTTPException(status_code=400, detail="name é obrigatório")
     try:
@@ -106,12 +134,13 @@ def create_resource(res_data: dict, db: Session = Depends(database.get_db)):
         db.commit()
         db.refresh(new_res)
         return new_res
-    except Exception:
+    except Exception as e:
         db.rollback()
+        logger.error("Erro interno ao criar recurso", exc_info=True)
         raise HTTPException(status_code=500, detail="Erro interno ao salvar")
 
 @app.put("/api/resources/{id}")
-def update_resource(id: int, res_data: dict, db: Session = Depends(database.get_db)):
+def update_resource(id: int, res_data: dict, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("recursos:editar"))):
     res = db.query(models.Resource).filter(models.Resource.id == id).first()
     if not res:
         raise HTTPException(status_code=404, detail="Integrante não encontrado")
@@ -126,7 +155,7 @@ def update_resource(id: int, res_data: dict, db: Session = Depends(database.get_
     return res
 
 @app.patch("/api/resources/{id}/status")
-def toggle_resource_status(id: int, db: Session = Depends(database.get_db)):
+def toggle_resource_status(id: int, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("recursos:editar"))):
     res = db.query(models.Resource).filter(models.Resource.id == id).first()
     if not res:
         raise HTTPException(status_code=404)
@@ -136,7 +165,7 @@ def toggle_resource_status(id: int, db: Session = Depends(database.get_db)):
     return res
 
 @app.delete("/api/resources/{id}")
-def delete_resource(id: int, db: Session = Depends(database.get_db)):
+def delete_resource(id: int, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("recursos:editar"))):
     res = db.query(models.Resource).filter(models.Resource.id == id).first()
     if not res:
         raise HTTPException(status_code=404, detail="Integrante não encontrado")
@@ -161,8 +190,9 @@ def list_users(db: Session = Depends(database.get_db), current=Depends(auth.requ
         "must_change_password": u.must_change_password
     } for u in users]
 
+# BLINDAGEM: Rotas de edição de usuários agora usam usuarios:editar
 @app.post("/api/users")
-def create_system_user(data: dict, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:ler"))):
+def create_system_user(data: dict, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:editar"))):
     role = db.query(models.Role).filter(models.Role.name == data.get('role', 'Visualizador')).first()
     new_user = models.User(
         name=data.get('name'),
@@ -177,7 +207,7 @@ def create_system_user(data: dict, db: Session = Depends(database.get_db), curre
     return {"status": "created"}
 
 @app.put("/api/users/{id}")
-def update_system_user(id: int, data: dict, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:ler"))):
+def update_system_user(id: int, data: dict, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:editar"))):
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user: raise HTTPException(status_code=404)
     
@@ -196,7 +226,7 @@ def update_system_user(id: int, data: dict, db: Session = Depends(database.get_d
     return {"status": "updated"}
 
 @app.patch("/api/users/{id}/status")
-def toggle_user_status(id: int, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:ler"))):
+def toggle_user_status(id: int, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:editar"))):
     user = db.query(models.User).filter(models.User.id == id).first()
     if not user: raise HTTPException(status_code=404)
     user.is_active = not user.is_active
@@ -204,7 +234,7 @@ def toggle_user_status(id: int, db: Session = Depends(database.get_db), current=
     return {"status": "success"}
 
 @app.delete("/api/users/{id}")
-def delete_system_user(id: int, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:ler"))):
+def delete_system_user(id: int, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:editar"))):
     db.query(models.User).filter(models.User.id == id).delete()
     db.commit()
     return {"status": "deleted"}
@@ -244,16 +274,25 @@ def login(data: dict, db: Session = Depends(database.get_db)):
 
 @app.post("/api/users/change-initial-password")
 def change_initial_password(data: dict, db: Session = Depends(database.get_db)):
-    user_id = data.get("userId")
+    # Mudança de contrato: Usamos username pois IDs mudam após resets de Docker
+    username = data.get("username")
     new_pwd = data.get("newPassword")
     
+    user = db.query(models.User).filter(models.User.username == username).first()
+    
+    if not user:
+        logger.error(f"Tentativa de troca de senha: Utilizador '{username}' não encontrado.")
+        raise HTTPException(status_code=404, detail="Utilizador não encontrado.")
+        
+    # GOVERNANÇA: Só permite a troca se a conta ainda estiver pendente (Segurança)
+    if not user.must_change_password:
+        raise HTTPException(status_code=403, detail="Esta conta já possui senha definida.")
+    
+    # Validação de complexidade (deve bater com a regex do frontend)
     strong_password_regex = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$")
     if not strong_password_regex.match(new_pwd):
         raise HTTPException(status_code=400, detail="A senha não cumpre os requisitos de segurança.")
         
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user: raise HTTPException(status_code=404)
-    
     user.password_hash = auth.get_password_hash(new_pwd)
     user.must_change_password = False
     db.commit()
@@ -271,19 +310,17 @@ async def upload_csv(
     content = await file.read()
     
     try:
-        # A API apenas recebe o arquivo e delega o trabalho pesado.
         rows, duration = ingestion.process_csv_and_upsert(content)
         return {"message": "Sucesso", "rows": rows, "time": duration}
     except Exception as e:
-        print(f"--- ERRO CRÍTICO NA INGESTÃO ---")
-        print(str(e))
-        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+        logger.error("Falha critica na ingestao do CSV", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro interno na ingestão. Verifique o arquivo e tente novamente.")
 
 @app.get("/api/workitems")
 def get_workitems(db: Session = Depends(database.get_db), user=Depends(auth.get_current_user)):
     return db.query(models.AzureWorkItem).order_by(
-        models.AzureWorkItem.parent_id, # <- CORRIGIDO PARA snake_case
-        models.AzureWorkItem.id         # <- CORRIGIDO PARA snake_case
+        models.AzureWorkItem.parent_id,
+        models.AzureWorkItem.id
     ).all()
 
 @app.patch("/api/workitems/{item_id}/metadata")
@@ -307,16 +344,21 @@ def get_assignments(item_id: int, db: Session = Depends(database.get_db), user=D
 
 @app.post("/api/workitems/{item_id}/assignments")
 def save_assignments(item_id: int, data: dict, db: Session = Depends(database.get_db), user=Depends(auth.get_current_user)):
+    # BLINDAGEM: Valida se os IDs fornecidos existem no banco antes de gravar
+    valid_resource_ids = {r.id for r in db.query(models.Resource.id).all()}
+    
     db.query(models.ResourceAssignment).filter(
         models.ResourceAssignment.work_item_id == item_id
     ).delete()
+    
     for phase, resource_ids in data.items():
         for r_id in resource_ids:
-            db.add(models.ResourceAssignment(
-                work_item_id=item_id,
-                resource_id=r_id,
-                phase=phase
-            ))
+            if r_id in valid_resource_ids:
+                db.add(models.ResourceAssignment(
+                    work_item_id=item_id,
+                    resource_id=r_id,
+                    phase=phase
+                ))
     db.commit()
     return {"status": "success"}
 
@@ -355,25 +397,41 @@ def delete_absence(id: int, db: Session = Depends(database.get_db), user=Depends
 @app.get("/api/admin/tables")
 def get_tables(db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:ler"))):
     try:
-        # Pega a engine atual do banco (seja ela SQLite ou Postgres) e lista as tabelas
         inspector = inspect(db.get_bind())
         return inspector.get_table_names()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# BLINDAGEM 3: Rota protegida com require_permission 
+# BLINDAGEM CRÍTICA: Anti-SQL Injection
 @app.post("/api/admin/query")
 def execute_query(data: dict, db: Session = Depends(database.get_db), current=Depends(auth.require_permission("usuarios:ler"))):
-    sql = data.get("query", "").strip().lower()
-    if not sql.startswith("select") or ";" in sql:
-        raise HTTPException(status_code=403, detail="Apenas SELECT simples permitido")
+    raw_query = data.get("query", "").strip().lower()
+    
+    # 1. Regex estrito: Exige exatamente "select * from [tabela]" (com limit opcional)
+    match = re.match(r"^select\s+\*\s+from\s+([a-z0-9_]+)(?:\s+limit\s+\d+)?$", raw_query)
+    if not match:
+        raise HTTPException(status_code=403, detail="Comando SQL bloqueado. Use apenas: 'select * from [tabela]'")
+        
+    target_table = match.group(1)
+    
+    # 2. Validação da tabela contra o esquema do banco de dados real
+    inspector = inspect(db.get_bind())
+    valid_tables = inspector.get_table_names()
+    
+    if target_table not in valid_tables:
+        raise HTTPException(status_code=404, detail="Tabela não existe no sistema.")
+        
     try:
-        result = db.execute(text(sql))
+        # 3. Executa a query utilizando apenas o nome da tabela validada em hardcode
+        # Impede execução de subqueries ou funções maliciosas embutidas pelo cliente
+        safe_query = f"SELECT * FROM {target_table} LIMIT 100"
+        result = db.execute(text(safe_query))
         columns = list(result.keys())
         rows = [dict(zip(columns, row)) for row in result.fetchall()]
         return {"columns": columns, "rows": rows}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Falha ao executar query segura: {str(e)}")
+        raise HTTPException(status_code=400, detail="Falha na leitura da tabela")
 
 @app.get("/api/users/me/preferences")
 def get_my_preferences(
@@ -388,7 +446,7 @@ def get_my_preferences(
 
 @app.put("/api/users/me/preferences")
 def update_my_preferences(
-    preferences: Dict[str, Any] = Body(...), 
+    preferences: UserPreferences = Body(...), 
     db: Session = Depends(database.get_db), 
     token_data: dict = Depends(auth.get_current_user)
 ):
@@ -396,7 +454,9 @@ def update_my_preferences(
     user = db.query(models.User).filter(models.User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilizador não encontrado")
-    user.preferences = preferences
+        
+    user.preferences = preferences.model_dump()
     db.commit()
     db.refresh(user)
     return user.preferences
+

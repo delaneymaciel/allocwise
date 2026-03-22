@@ -1,24 +1,43 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { jwtDecode } from 'jwt-decode';
 
-// Removemos o 'export' daqui para definir no final como default
 const ProtectedRoute = ({ children, requiredPermission }) => {
-  const { user, hasPermission } = useAuth();
+  // Agora desestruturamos o 'token' que adicionámos ao AuthContext
+  const { user, token, hasPermission } = useAuth();
 
-  if (!user) return <Navigate to="/login" />;
+  // Função de validação em tempo real
+  const isTokenValid = (tokenStr) => {
+    if (!tokenStr) return false;
+    try {
+      const { exp } = jwtDecode(tokenStr);
+      // exp está em segundos (Unix), Date.now() em milissegundos
+      return Date.now() < exp * 1000;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Blindagem: Se não houver user OU o token no sessionStorage expirou, expulsa para o login
+  if (!user || !isTokenValid(token)) {
+    return <Navigate to="/login" />;
+  }
   
+  // Verificação de RBAC (Controle de Acesso Baseado em Regras)
   if (requiredPermission && !hasPermission(requiredPermission)) {
-    return <div className="p-10 text-red-500 font-black uppercase text-xs">Acesso Negado: Você não tem permissão.</div>;
+    return (
+      <div className="p-10 text-red-500 font-black uppercase text-xs tracking-widest text-center">
+        ⚠️ Acesso Negado: Você não tem a permissão '{requiredPermission}'.
+      </div>
+    );
   }
 
   return children;
 };
 
-// Mantemos este como named export caso você precise em outros lugares
 export const RenderIf = ({ permission, children }) => {
   const { hasPermission } = useAuth();
   return hasPermission(permission) ? children : null;
 };
 
-// ESSA LINHA RESOLVE O ERRO NO APP.JSX
 export default ProtectedRoute;

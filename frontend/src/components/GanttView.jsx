@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, memo } from 'react';
 import { format, differenceInDays, addDays, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import api from '../services/api';
@@ -11,7 +11,7 @@ const getPriorityData = (priorityValue) => {
   return { value: safeP, color: colors[safeP] };
 };
 
-export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal, savedScrollPosition, onSaveScrollPosition, showTeamNames = true }) {
+const GanttView = ({ data, getWorkItemIcon, onOpenAllocationModal, savedScrollPosition, onSaveScrollPosition, showTeamNames = true }) => {
   const [holidays, setHolidays] = useState([]);
   const [resourcesMap, setResourcesMap] = useState({});
   const [assignmentsMap, setAssignmentsMap] = useState({});
@@ -316,6 +316,13 @@ export default function GanttView({ data, getWorkItemIcon, onOpenAllocationModal
           </tbody>
         </table>
       </div>
+      
+      {/* NOVO: Footer discreto com a contagem de registos no Gantt */}
+      <div className="bg-gray-50/50 border-t border-gray-100 px-4 py-2 flex justify-end items-center shrink-0">
+        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Total: {data.length} registo(s)</span>
+      </div>
     </div>
   );
-}
+};
+
+export default memo(GanttView);
