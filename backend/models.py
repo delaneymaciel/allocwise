@@ -1,6 +1,6 @@
 import json
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Table, Date, Boolean, UniqueConstraint, Index, JSON, Text
-from sqlalchemy.sql import func # ADICIONADO: Para gerir timestamps diretamente no motor do Postgres
+from sqlalchemy.sql import func 
 from sqlalchemy.orm import relationship, validates
 from database import Base
 
@@ -8,6 +8,12 @@ role_permissions = Table(
     'role_permissions', Base.metadata,
     Column('role_id', Integer, ForeignKey('roles.id', ondelete="CASCADE"), primary_key=True, index=True),
     Column('permission_id', Integer, ForeignKey('permissions.id', ondelete="CASCADE"), primary_key=True, index=True)
+)
+
+user_groups = Table(
+    'user_groups', Base.metadata,
+    Column('user_id', Integer, ForeignKey('users.id', ondelete="CASCADE"), primary_key=True),
+    Column('group_id', Integer, ForeignKey('groups.id', ondelete="CASCADE"), primary_key=True)
 )
 
 class Role(Base):
@@ -30,9 +36,10 @@ class User(Base):
     email = Column(String(150), nullable=True, index=True)
     password_hash = Column(String(255), nullable=False)
     
-    # MELHORIA: nullable=True explícito
     role_id = Column(Integer, ForeignKey('roles.id', ondelete="SET NULL"), nullable=True, index=True)
     role = relationship("Role", back_populates="users", lazy="selectin")
+    
+    groups = relationship("Group", secondary=user_groups, back_populates="users", lazy="selectin")
     
     default_prefs = {
         "ganttStrictDates": True,
@@ -44,7 +51,6 @@ class User(Base):
         ]
     }
     
-    # MELHORIA: lambda dict() para prevenir mutabilidade de memória em Python
     preferences = Column(JSON, default=lambda: dict(User.default_prefs), server_default=json.dumps(default_prefs), nullable=False)
     is_active = Column(Boolean, default=True, index=True)
     must_change_password = Column(Boolean, default=True)
@@ -63,7 +69,6 @@ class WorkItemMetadata(Base):
     area = Column(String(100))
     diretor = Column(String(100))
     frente = Column(String(100))
-    # GOVERNANÇA: Rastreio de quando a edição manual ocorreu
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 class AzureWorkItem(Base):
@@ -86,7 +91,6 @@ class AzureWorkItem(Base):
     fim_hml = Column(DateTime)
     est_prod = Column(DateTime)
     
-    # GOVERNANÇA: Saber exatamente quando ocorreu a última ingestão do CSV
     synced_at = Column(DateTime, server_default=func.now())
     
     custom_metadata = relationship(
@@ -142,3 +146,30 @@ class SystemSetting(Base):
     __tablename__ = "system_settings"
     id = Column(Integer, primary_key=True, index=True)
     app_name = Column(String(150), default="Squad Master Hub")
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(String)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_system = Column(Boolean, default=False, nullable=False)
+    is_superadmin = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    permissions = relationship("GroupPermission", back_populates="group", cascade="all, delete-orphan")
+    users = relationship("User", secondary=user_groups, back_populates="groups")
+
+class GroupPermission(Base):
+    __tablename__ = "group_permissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    module_id = Column(String(50), nullable=False)
+    action = Column(String(50), nullable=False)
+
+    group = relationship("Group", back_populates="permissions")
+
+    __table_args__ = (UniqueConstraint('group_id', 'module_id', 'action', name='uix_group_module_action'),)
