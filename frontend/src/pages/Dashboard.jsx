@@ -5,6 +5,8 @@ import GanttView from '../components/GanttView';
 import VacationsView from '../components/VacationsView';
 import AdminView from '../components/AdminView';
 import SecurityView from '../components/SecurityView';
+import GroupManagement from './GroupManagement';
+import Can from '../components/Can';
 
 
 
@@ -47,7 +49,7 @@ export default function Dashboard() {
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false); 
   const [settingsForm, setSettingsForm] = useState({ ganttStrictDates: true, ganttStatusFilter: DEFAULT_STATUS_FILTER, selectedSystems: [], ganttShowTeamNames: true });
-
+  const[isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [editingMetadata, setEditingMetadata] = useState(null);
   const [metadataForm, setMetadataForm] = useState({ area: '', diretor: '', frente: '' });
 
@@ -462,13 +464,21 @@ export default function Dashboard() {
           <div className="flex-shrink-0">
             <h1 className="text-2xl font-black text-gray-800 tracking-tight">AllocWise</h1>
             <div className="flex items-center gap-3 mt-1">
-              <div className="flex bg-gray-100 p-1 rounded-xl gap-1">
-                {['list', 'gantt', 'vacations'].map(mode => (
-                  <button key={mode} onClick={() => setViewMode(mode)} className={`px-4 py-1.5 rounded-lg text-[10px] font-black ${viewMode === mode ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}>
-                    {mode === 'list' ? 'Lista' : mode === 'gantt' ? 'Gantt' : 'Férias'}
-                  </button>
-                ))}
-              </div>
+            <div className="flex bg-gray-100 p-1 rounded-xl gap-1">
+              <Can module="op_workitems" action="view">
+                <button onClick={() => setViewMode('list')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black ${viewMode === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}>
+                  Lista
+                </button>
+                <button onClick={() => setViewMode('gantt')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black ${viewMode === 'gantt' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}>
+                  Gantt
+                </button>
+              </Can>
+              <Can module="op_vacations" action="view">
+                <button onClick={() => setViewMode('vacations')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black ${viewMode === 'vacations' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}>
+                  Férias
+                </button>
+              </Can>
+            </div>
             </div>
           </div>
           <div className="relative w-full max-w-2xl">
@@ -482,22 +492,39 @@ export default function Dashboard() {
               </button>
               {isSettingsMenuOpen && (
                 <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <button onClick={() => fileInputRef.current.click()} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors">
-                    <span>📤</span> {uploading ? 'Processando...' : 'Importar CSV'}
-                  </button>
+                  <Can module="data_import" action="import">
+                    <button onClick={() => fileInputRef.current.click()} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors">
+                      <span>📤</span> {uploading ? 'Processando...' : 'Importar CSV'}
+                    </button>
+                  </Can>
+
                   <button onClick={() => { setIsSettingsModalOpen(true); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors">
                     <span>🛠️</span> Configuração do Sistema
                   </button>
-                  <button onClick={() => { setViewMode('team'); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors border-t border-gray-50">
-                    <span>👥</span> Equipe
-                  </button>
-                  <button onClick={() => { setViewMode('security'); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors border-t border-gray-50">
-                    <span>🔐</span> Usuários
-                  </button>
-                  <button onClick={() => { setViewMode('admin'); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors border-t border-gray-50">
-                    <span>💾</span> Banco de Dados
-                  </button>
-                  <button onClick={() => { setIsAboutModalOpen(true); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-blue-600 hover:bg-blue-50 transition-colors border-t border-gray-50">
+
+                  <Can module="op_teams" action="view">
+                    <button onClick={() => { setViewMode('team'); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors border-t border-gray-50">
+                      <span>👥</span> Equipe
+                    </button>
+                  </Can>
+
+                  <Can module="admin_users" action="view">
+                    <button onClick={() => { setViewMode('security'); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors border-t border-gray-50">
+                      <span>🔐</span> Usuários
+                    </button>
+                  </Can>
+
+                  <Can module="admin_groups" action="view">
+                    <button onClick={() => { setViewMode('groups'); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors border-t border-gray-50">
+                      <span>🎭</span> Grupos e Permissões
+                    </button>
+                  </Can>
+
+                  <Can module="data_db" action="view">
+                    <button onClick={() => { setViewMode('admin'); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors border-t border-gray-50">
+                      <span>💾</span> Banco de Dados
+                    </button>
+                  </Can>                  <button onClick={() => { setIsAboutModalOpen(true); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-blue-600 hover:bg-blue-50 transition-colors border-t border-gray-50">
                     <span>ℹ️</span> Sobre o Sistema
                   </button>
                   <div className="px-4 py-3 text-[11px] font-black text-gray-300 border-t border-gray-50"><span>_______</span></div>
@@ -627,6 +654,8 @@ export default function Dashboard() {
         <SecurityView />
       ) : viewMode === 'admin' ? (
         <AdminView />
+      ) : viewMode === 'groups' ? (
+        <GroupManagement isOpen={isGroupModalOpen} onClose={() => setIsGroupModalOpen(false)} />
       ) : (
         <GanttView data={ganttFilteredData} getWorkItemIcon={getWorkItemIcon} onOpenAllocationModal={openEditModal} savedScrollPosition={userPreferences.ganttScrollPosition} onSaveScrollPosition={handleSaveScrollPosition} showTeamNames={userPreferences.ganttShowTeamNames} />
       )}

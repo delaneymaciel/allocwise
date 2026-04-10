@@ -4,7 +4,6 @@ import { jwtDecode } from 'jwt-decode';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  // Alteração estratégica: sessionStorage garante que o token não persista no disco (Segurança)
   const [token, setToken] = useState(sessionStorage.getItem('token'));
   
   const [user, setUser] = useState(() => {
@@ -12,7 +11,6 @@ export const AuthProvider = ({ children }) => {
     if (savedToken && savedToken.split('.').length === 3) {
       try {
         const decoded = jwtDecode(savedToken);
-        // Validação de expiração logo na inicialização
         if (decoded.exp * 1000 < Date.now()) {
           sessionStorage.removeItem('token');
           return null;
@@ -38,9 +36,11 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  const hasPermission = (perm) => user?.permissions?.includes(perm);
+  const hasPermission = (module, action) => {
+    if (user?.is_superadmin) return true;
+    return user?.permissions?.includes(`${module}:${action}`);
+  };
 
-  // CRÍTICO: Agora o 'token' é exposto para que o ProtectedRoute e o api.js possam usá-lo
   return (
     <AuthContext.Provider value={{ user, token, login, logout, hasPermission }}>
       {children}
