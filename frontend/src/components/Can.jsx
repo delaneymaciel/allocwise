@@ -9,4 +9,5 @@ export default function Can({ module, action, children }) {
   }
 
   return null;
+  
 }

@@ -2,12 +2,11 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import api from '../services/api'; 
 import { useAuth } from '../components/AuthContext';
 import GanttView from '../components/GanttView';
-import VacationsView from '../components/VacationsView';
+import Can from '../components/Can';
 import AdminView from '../components/AdminView';
 import SecurityView from '../components/SecurityView';
+import VacationsView from '../components/VacationsView';
 import GroupManagement from './GroupManagement';
-import Can from '../components/Can';
-
 
 
 
