@@ -728,7 +728,7 @@ export default function Dashboard() {
 
       {isSettingsModalOpen && (
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in duration-200"><h2 className="text-xl font-black text-gray-800 mb-4">Configurações do Sistema</h2>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto p-5 animate-in zoom-in duration-200"> <h2 className="text-xl font-black text-gray-800 mb-4">Configurações do Sistema</h2>
             <form onSubmit={handleSaveSettings}>
               <div className="mt-6 border-t border-gray-100 pt-4"><h3 className="text-[12px] font-black text-gray-800 uppercase tracking-widest mb-4">Sistemas (Area Path)</h3>
                 <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Filtrar por Sistema</label>
