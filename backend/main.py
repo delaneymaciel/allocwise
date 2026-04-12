@@ -26,6 +26,7 @@ class UserPreferences(BaseModel):
     selectedSystems: List[str] = []
     ganttScrollPosition: Optional[Dict[str, Any]] = None
     vacationsScrollPosition: Optional[Dict[str, Any]] = None
+    treeFilterConfig: Optional[Dict[str, Any]] = None
 
 def seed_holidays(db: Session):
     if db.query(models.Holiday).first():

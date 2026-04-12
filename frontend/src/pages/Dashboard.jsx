@@ -4,10 +4,12 @@ import { useAuth } from '../components/AuthContext';
 import GanttView from '../components/GanttView';
 import Can from '../components/Can';
 import AdminView from '../components/AdminView';
+import TreeFilterModal from '../components/TreeFilterModal';
 import SecurityView from '../components/SecurityView';
 import VacationsView from '../components/VacationsView';
 import GroupManagement from './GroupManagement';
-
+import ExcelJS from 'exceljs';
+import ExportPreviewModal from '../components/ExportPreviewModal'
 
 
 const DEFAULT_STATUS_FILTER = [
@@ -17,6 +19,7 @@ const DEFAULT_STATUS_FILTER = [
 ];
 
 export default function Dashboard() {
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const { logout } = useAuth();
   const fileInputRef = useRef(null); 
   const [data, setData] = useState([]);
@@ -45,6 +48,8 @@ export default function Dashboard() {
 
   const [userPreferences, setUserPreferences] = useState({ ganttStrictDates: true, ganttStatusFilter: DEFAULT_STATUS_FILTER, selectedSystems: [], ganttShowTeamNames: true });
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isTreeFilterModalOpen, setIsTreeFilterModalOpen] = useState(false);
+  const [treeFilterConfig, setTreeFilterConfig] = useState({ active: false, ids: [], types: [] });
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false); 
   const [settingsForm, setSettingsForm] = useState({ ganttStrictDates: true, ganttStatusFilter: DEFAULT_STATUS_FILTER, selectedSystems: [], ganttShowTeamNames: true });
@@ -56,6 +61,22 @@ export default function Dashboard() {
   const listRowHeight = 36; 
   const listVisibleRows = 25;
   const listOverscan = 10;
+
+  const handleToggleAllSystems = () => {
+    const allSelected = settingsForm.selectedSystems.length === availableSystems.length;
+    setSettingsForm({
+      ...settingsForm,
+      selectedSystems: allSelected ? [] : [...availableSystems]
+    });
+  };
+
+  const handleToggleAllStatuses = () => {
+    const allSelected = settingsForm.ganttStatusFilter.length === availableStatuses.length;
+    setSettingsForm({
+      ...settingsForm,
+      ganttStatusFilter: allSelected ? [] : [...availableStatuses]
+    });
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedFilter(filterText), 50);
@@ -94,11 +115,13 @@ export default function Dashboard() {
         selectedSystems: uPref.selectedSystems || [],
         ganttScrollPosition: uPref.ganttScrollPosition || null,
         vacationsScrollPosition: uPref.vacationsScrollPosition || null,
-        ganttShowTeamNames: uPref.ganttShowTeamNames !== undefined ? uPref.ganttShowTeamNames : true
+        ganttShowTeamNames: uPref.ganttShowTeamNames !== undefined ? uPref.ganttShowTeamNames : true,
+        treeFilterConfig: uPref.treeFilterConfig || { active: false, ids: [], types: [] } 
       };
 
       setUserPreferences(prefs);
       setSettingsForm(prefs);
+      setTreeFilterConfig(prefs.treeFilterConfig);
       
     } catch (err) { 
       if (err.message !== "Sessão Expirada") console.error(err); 
@@ -114,6 +137,16 @@ export default function Dashboard() {
       const newPrefs = { ...prev, [key]: pos };
       api.put('/api/users/me/preferences', newPrefs).catch(()=>{});
       return newPrefs;
+    });
+  };
+
+  const handleApplyTreeFilter = (newConfig) => {
+    setTreeFilterConfig(newConfig);
+    
+    const updatedPrefs = { ...userPreferences, treeFilterConfig: newConfig };
+    setUserPreferences(updatedPrefs);
+    api.put('/api/users/me/preferences', updatedPrefs).catch(() => {
+      console.warn("Não foi possível salvar o filtro de árvore nas preferências.");
     });
   };
 
@@ -218,6 +251,109 @@ export default function Dashboard() {
       setUploadMessage(""); 
       e.target.value = ""; 
     }
+  };
+
+  const handleExportExcel = async (indentSize) => {
+    // 1. Gera a árvore completa ignorando as linhas "recolhidas" na tela
+    const exportData = [];
+    const allIdsInFilter = new Set((filteredData || []).map(item => item.id));
+        
+    // NOME CORRETO AQUI: traverseExport
+    const traverseExport = (parentId = 'ROOT', depth = 0) => {
+      let nodes = (filteredData || []).filter(item => 
+        parentId === 'ROOT' ? (!item.parent_id || !allIdsInFilter.has(item.parent_id)) : item.parent_id === parentId
+      );
+
+      // ORDENAÇÃO DA EXPORTAÇÃO
+      nodes.sort((a, b) => {
+        const sysA = a.area_path || "";
+        const sysB = b.area_path || "";
+        if (sysA !== sysB) return sysA.localeCompare(sysB);
+        
+        const stateA = a.state || "";
+        const stateB = b.state || "";
+        return stateA.localeCompare(stateB);
+      });
+
+      for (const node of nodes) {
+        exportData.push({ node, depth });
+        traverseExport(node.id, depth + 1); // Desce a árvore inteira
+      }
+    };
+    traverseExport();
+
+    if (exportData.length === 0) {
+      alert("Não há dados para exportar com os filtros atuais.");
+      return;
+    }
+
+    // 2. Cria a Planilha
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Visão AllocWise');
+
+    // 3. Define as Colunas
+    sheet.columns = [
+      { header: 'Sistema', key: 'sistema', width: 20 },
+      { header: 'Pai', key: 'pai', width: 10 },
+      { header: 'ID', key: 'id', width: 10 },
+      { header: 'Título', key: 'titulo', width: 50 },
+      { header: 'Tipo', key: 'tipo', width: 15 },
+      { header: 'Status', key: 'status', width: 18 },
+      { header: 'Prioridade', key: 'prioridade', width: 12 },
+      { header: 'Data Ini Dev', key: 'ini_dev', width: 15 },
+      { header: 'Data Fim Dev', key: 'fim_dev', width: 15 },
+      { header: 'Data Ini QA', key: 'ini_qa', width: 15 },
+      { header: 'Data Fim QA', key: 'fim_qa', width: 15 },
+      { header: 'Data Ini HML', key: 'ini_hml', width: 15 },
+      { header: 'Data Fim HML', key: 'fim_hml', width: 15 },
+      { header: 'Est. Prod', key: 'est_prod', width: 15 }
+    ];
+
+    // 4. Estilo do Cabeçalho (Azul com texto branco)
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }; // Azul blue-600
+    sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // 5. Preenche os Dados
+    exportData.forEach(({ node, depth }) => {
+      // Indentação Visual Clássica (3 espaços por nível)
+      const indent = ' '.repeat(depth * indentSize);
+      
+      const row = sheet.addRow({
+        sistema: node.area_path?.split('\\').pop() || '',
+        pai: node.parent_id || '',
+        id: node.id,
+        titulo: `${indent}${node.title}`, // O Título ganha os espaços
+        tipo: node.work_item_type,
+        status: node.state,
+        prioridade: node.priority || '',
+        ini_dev: formatDate(node.ini_dev),
+        fim_dev: formatDate(node.fim_dev),
+        ini_qa: formatDate(node.ini_qa),
+        fim_qa: formatDate(node.fim_qa),
+        ini_hml: formatDate(node.ini_hml),
+        fim_hml: formatDate(node.fim_hml),
+        est_prod: formatDate(node.est_prod)
+      });
+
+      // 6. O Agrupamento Nativo do Excel (Outlining)
+      if (depth > 0) {
+        row.outlineLevel = depth;
+      }
+    });
+
+    // 7. Salva e Dispara o Download
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AllocWise_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    setIsExportModalOpen(false);
+    setIsSettingsMenuOpen(false);
   };
 
   const openEditModal = async (item, phase = null) => {
@@ -360,11 +496,60 @@ export default function Dashboard() {
     const statuses = new Set();
     (data || []).forEach(item => { if (item.state) statuses.add(item.state); });
     return Array.from(statuses).sort();
+  }, [data]);  
+
+  const availableTypes = useMemo(() => {
+    const types = new Set();
+    (data || []).forEach(item => { if (item.work_item_type) types.add(item.work_item_type); });
+    return Array.from(types).sort();
   }, [data]);
 
   const filteredData = useMemo(() => {
     let result = data || [];
     
+    if (treeFilterConfig.active && treeFilterConfig.ids.length > 0) {
+      const dataMap = new Map();
+      const childrenMap = new Map();
+
+      result.forEach(item => {
+        const idStr = String(item.id);
+        const pidStr = String(item.parent_id);
+        dataMap.set(idStr, item);
+        if (item.parent_id) {
+          if (!childrenMap.has(pidStr)) childrenMap.set(pidStr, []);
+          childrenMap.get(pidStr).push(idStr);
+        }
+      });
+
+      const rootIds = new Set();
+
+      treeFilterConfig.ids.forEach(id => {
+        let currentId = String(id);
+        while (currentId && dataMap.has(currentId)) {
+          const item = dataMap.get(currentId);
+          if (!item.parent_id || !dataMap.has(String(item.parent_id))) {
+            rootIds.add(currentId);
+            break;
+          }
+          currentId = String(item.parent_id);
+        }
+      });
+
+      const familyIds = new Set();
+      const traverseDown = (id) => {
+        if (familyIds.has(id)) return;
+        familyIds.add(id);
+        const children = childrenMap.get(id) || [];
+        children.forEach(childId => traverseDown(childId));
+      };
+      rootIds.forEach(rootId => traverseDown(rootId));
+
+      result = result.filter(item => {
+        const inFamily = familyIds.has(String(item.id));
+        const matchesType = treeFilterConfig.types.length === 0 || treeFilterConfig.types.includes(item.work_item_type);
+        return inFamily && matchesType;
+      });
+    }
     if (userPreferences.selectedSystems?.length > 0) {
       result = result.filter(item => userPreferences.selectedSystems.includes(item.area_path));
     }
@@ -409,14 +594,29 @@ export default function Dashboard() {
         return azureContent.includes(t) || resourceNames.includes(t);
       });
     });
-  }, [data, debouncedFilter, allAssignments, resources, userPreferences.selectedSystems, columnFilters]);
+  }, [data, debouncedFilter, allAssignments, resources, userPreferences.selectedSystems, columnFilters, treeFilterConfig]);
 
   const flattenedRows = useMemo(() => {
     const result = [];
     const allIdsInFilter = new Set((filteredData || []).map(item => item.id));
     
+    // NOME CORRETO AQUI: traverse
     const traverse = (parentId = 'ROOT', depth = 0) => {
-      const nodes = (filteredData || []).filter(item => parentId === 'ROOT' ? (!item.parent_id || !allIdsInFilter.has(item.parent_id)) : item.parent_id === parentId);
+      let nodes = (filteredData || []).filter(item => 
+        parentId === 'ROOT' ? (!item.parent_id || !allIdsInFilter.has(item.parent_id)) : item.parent_id === parentId
+      );
+
+      // ORDENAÇÃO DA TELA
+      nodes.sort((a, b) => {
+        const sysA = a.area_path || "";
+        const sysB = b.area_path || "";
+        if (sysA !== sysB) return sysA.localeCompare(sysB);
+        
+        const stateA = a.state || "";
+        const stateB = b.state || "";
+        return stateA.localeCompare(stateB);
+      });
+
       for (const node of nodes) {
         result.push({ node, depth });
         if (expandedRows.has(node.id)) {
@@ -496,6 +696,18 @@ export default function Dashboard() {
                       <span>📤</span> {uploading ? 'Processando...' : 'Importar CSV'}
                     </button>
                   </Can>
+
+                  <button 
+                    onClick={() => { setIsExportModalOpen(true); setIsSettingsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-bray-700 hover:bg-gray-50 transition-colors border-b border-gray-100"
+                  >
+                    <span>📊</span> Exportar Visão Atual (Excel)
+                  </button>                  <button 
+                    onClick={() => { setIsTreeFilterModalOpen(true); setIsSettingsMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    <span>🌳</span> Filtro por Árvore
+                  </button>              
 
                   <button onClick={() => { setIsSettingsModalOpen(true); setIsSettingsMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-[11px] font-black text-gray-600 hover:bg-gray-50 transition-colors">
                     <span>🛠️</span> Configuração do Sistema
@@ -730,8 +942,19 @@ export default function Dashboard() {
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto p-5 animate-in zoom-in duration-200"> <h2 className="text-xl font-black text-gray-800 mb-4">Configurações do Sistema</h2>
             <form onSubmit={handleSaveSettings}>
-              <div className="mt-6 border-t border-gray-100 pt-4"><h3 className="text-[12px] font-black text-gray-800 uppercase tracking-widest mb-4">Sistemas (Area Path)</h3>
-                <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Filtrar por Sistema</label>
+            <div className="mt-6 border-t border-gray-100 pt-4">
+                  <div className="flex justify-between items-end mb-4">
+                    <h3 className="text-[12px] font-black text-gray-800 uppercase tracking-widest">Sistemas (Area Path)</h3>
+                    <button 
+                      type="button" 
+                      onClick={handleToggleAllSystems} 
+                      className={`text-[10px] font-black uppercase tracking-wider transition-colors ${settingsForm.selectedSystems.length === availableSystems.length ? 'text-gray-400 hover:text-gray-600' : 'text-blue-600 hover:text-blue-800'}`}
+                    >
+                      {settingsForm.selectedSystems.length === availableSystems.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+                    </button>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Filtrar por Sistema</label>
                   <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-1 custom-scrollbar">
                     {availableSystems.map(sys => {
                       const isSelected = settingsForm.selectedSystems.includes(sys);
@@ -743,7 +966,17 @@ export default function Dashboard() {
               <div className="mt-6 border-t border-gray-100 pt-4"><h3 className="text-[12px] font-black text-gray-800 uppercase tracking-widest mb-4">Gantt</h3>
                 <label className="flex items-center gap-3 cursor-pointer mb-4"><div className="relative"><input type="checkbox" className="sr-only" checked={settingsForm.ganttStrictDates} onChange={e => setSettingsForm({...settingsForm, ganttStrictDates: e.target.checked})} /><div className={`block w-10 h-6 rounded-full transition-colors ${settingsForm.ganttStrictDates ? 'bg-blue-600' : 'bg-gray-200'}`}></div><div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settingsForm.ganttStrictDates ? 'translate-x-4' : ''}`}></div></div><div><span className="text-xs font-black text-gray-800 block">Exigir Datas de Dev</span><span className="text-[10px] font-bold text-gray-500 block">Oculta demandas sem Início/Fim de Dev.</span></div></label>
                 <label className="flex items-center gap-3 cursor-pointer mb-4"><div className="relative"><input type="checkbox" className="sr-only" checked={settingsForm.ganttShowTeamNames} onChange={e => setSettingsForm({...settingsForm, ganttShowTeamNames: e.target.checked})} /><div className={`block w-10 h-6 rounded-full transition-colors ${settingsForm.ganttShowTeamNames ? 'bg-blue-600' : 'bg-gray-200'}`}></div><div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${settingsForm.ganttShowTeamNames ? 'translate-x-4' : ''}`}></div></div><div><span className="text-xs font-black text-gray-800 block">Mostrar Equipa no Gantt</span><span className="text-[10px] font-bold text-gray-500 block">Exibe nomes das pessoas alocadas.</span></div></label>
-                <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Filtrar por Status</label>
+                <div className="mt-4">
+                    <div className="flex justify-between items-end mb-3">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">Filtrar por Status</label>
+                      <button 
+                        type="button" 
+                        onClick={handleToggleAllStatuses} 
+                        className={`text-[10px] font-black uppercase tracking-wider transition-colors ${settingsForm.ganttStatusFilter.length === availableStatuses.length ? 'text-gray-400 hover:text-gray-600' : 'text-blue-600 hover:text-blue-800'}`}
+                      >
+                        {settingsForm.ganttStatusFilter.length === availableStatuses.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+                      </button>
+                    </div>
                   <div className="flex flex-wrap gap-2">{availableStatuses.map(status => (<button key={status} type="button" onClick={() => { const newFilter = settingsForm.ganttStatusFilter.includes(status) ? settingsForm.ganttStatusFilter.filter(s => s !== status) : [...settingsForm.ganttStatusFilter, status]; setSettingsForm({...settingsForm, ganttStatusFilter: newFilter}); }} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${settingsForm.ganttStatusFilter.includes(status) ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-300'}`}>{status}</button>))}</div>
                 </div>
               </div>
@@ -752,6 +985,19 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+      <TreeFilterModal 
+              isOpen={isTreeFilterModalOpen} 
+              onClose={() => setIsTreeFilterModalOpen(false)}
+              onApply={handleApplyTreeFilter}
+              currentFilter={treeFilterConfig}
+              availableTypes={availableTypes}
+            />
+          <ExportPreviewModal 
+            isOpen={isExportModalOpen} 
+            onClose={() => setIsExportModalOpen(false)}
+            onConfirm={handleExportExcel}
+            data={flattenedRows} 
+          />
     </div>
   );
 }
